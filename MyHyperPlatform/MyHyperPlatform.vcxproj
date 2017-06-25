@@ -147,13 +147,16 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DriverEntry.cpp">
+    <ClCompile Include="DriverEntry.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
       </CompileAs>
     </ClCompile>
+    <ClCompile Include="GlobalVariables.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
+    <ClInclude Include="GlobalVariables.h" />
+    <ClInclude Include="Log.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

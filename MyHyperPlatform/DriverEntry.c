@@ -7,6 +7,8 @@
 
 #include "Common.h"
 
+#include "GlobalVariables.h"
+
 // 函数预声明
 DRIVER_UNLOAD DriverUnload;
 BOOLEAN IsSupportedOS();
@@ -42,7 +44,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	}
 
 	//  初始化全局变量
-	NtStatus = GlobalVariableInitialization();
+	NtStatus = GlobalVariablesInitialization();
 	if (!NT_SUCCESS(NtStatus))
 	{
 		// LogTermination();

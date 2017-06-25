@@ -17,6 +17,12 @@
       <UniqueIdentifier>{8E41214B-6785-4CFE-B992-037D68949A14}</UniqueIdentifier>
       <Extensions>inf;inv;inx;mof;mc;</Extensions>
     </Filter>
+    <Filter Include="LogFile">
+      <UniqueIdentifier>{591b67e5-e0d2-42da-baca-e16427aaf2a0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GlobalVariable">
+      <UniqueIdentifier>{c8ecb371-5a15-4d37-ad1d-d59f52e7714b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="MyHyperPlatform.inf">
@@ -27,10 +33,19 @@
     <ClInclude Include="Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Log.h">
+      <Filter>LogFile</Filter>
+    </ClInclude>
+    <ClInclude Include="GlobalVariables.h">
+      <Filter>GlobalVariable</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DriverEntry.cpp">
+    <ClCompile Include="DriverEntry.c">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GlobalVariables.cpp">
+      <Filter>GlobalVariable</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
