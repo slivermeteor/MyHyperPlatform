@@ -23,6 +23,9 @@
     <Filter Include="GlobalVariable">
       <UniqueIdentifier>{c8ecb371-5a15-4d37-ad1d-d59f52e7714b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Performance">
+      <UniqueIdentifier>{002b2a55-e01c-4bd7-a1b4-50415ab262aa}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="MyHyperPlatform.inf">
@@ -39,6 +42,12 @@
     <ClInclude Include="GlobalVariables.h">
       <Filter>GlobalVariable</Filter>
     </ClInclude>
+    <ClInclude Include="Performance.h">
+      <Filter>Performance</Filter>
+    </ClInclude>
+    <ClInclude Include="PerfCounter.h">
+      <Filter>Performance</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DriverEntry.c">
@@ -46,6 +55,9 @@
     </ClCompile>
     <ClCompile Include="GlobalVariables.cpp">
       <Filter>GlobalVariable</Filter>
+    </ClCompile>
+    <ClCompile Include="Performance.cpp">
+      <Filter>Performance</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

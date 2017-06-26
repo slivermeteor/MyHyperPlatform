@@ -152,11 +152,14 @@
       </CompileAs>
     </ClCompile>
     <ClCompile Include="GlobalVariables.cpp" />
+    <ClCompile Include="Performance.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
     <ClInclude Include="GlobalVariables.h" />
     <ClInclude Include="Log.h" />
+    <ClInclude Include="PerfCounter.h" />
+    <ClInclude Include="Performance.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
