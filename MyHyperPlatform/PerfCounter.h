@@ -170,7 +170,11 @@ class PERF_COUNTER
 public:
 	using QUERY_TIME_ROUTINE = ULONG64();
 
-
+	// 通过QueryTimeRoutine得到当前时间
+	// @param Collector 类实例 来存储行为数据
+	// @param QueryTimeRoutine 时间查询函数指针
+	// @param LocationName 将会被记录的函数名
+	// 你必须使用 #HYPERPLATFORM_PERFCOUNTER_MEASURE_TIME() 来创建这个类的实例
 	PERF_COUNTER(_In_ PERF_COLLECTOR* Collector, _In_opt_ QUERY_TIME_ROUTINE* QueryTimeRoutine, _In_ const char* LocationName):
 	m_Collector(Collector), m_QueryTimeRoutine(QueryTimeRoutine ? QueryTimeRoutine : RdTsc), m_LocationName(LocationName), m_BeforeTime(m_QueryTimeRoutine())
 	{

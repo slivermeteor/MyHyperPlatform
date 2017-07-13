@@ -147,19 +147,35 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DriverEntry.c">
+    <ClCompile Include="DriverEntry.cpp">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
       </CompileAs>
     </ClCompile>
+    <ClCompile Include="EPT.cpp" />
     <ClCompile Include="GlobalVariables.cpp" />
+    <ClCompile Include="HotplugCallback.cpp" />
+    <ClCompile Include="Log.cpp" />
     <ClCompile Include="Performance.cpp" />
+    <ClCompile Include="PowerCallback.cpp" />
+    <ClCompile Include="Util.cpp" />
+    <ClCompile Include="VM.cpp" />
+    <ClCompile Include="VMM.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ASM.h" />
     <ClInclude Include="Common.h" />
+    <ClInclude Include="EPT.h" />
     <ClInclude Include="GlobalVariables.h" />
+    <ClInclude Include="ia32_type.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="PerfCounter.h" />
     <ClInclude Include="Performance.h" />
+    <ClInclude Include="PowerCallback.h" />
+    <ClInclude Include="Util.h" />
+    <ClInclude Include="UtilPageConstants.h" />
+    <ClInclude Include="HotplugCallback.h" />
+    <ClInclude Include="VM.h" />
+    <ClInclude Include="VMM.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

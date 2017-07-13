@@ -26,6 +26,24 @@
     <Filter Include="Performance">
       <UniqueIdentifier>{002b2a55-e01c-4bd7-a1b4-50415ab262aa}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{615b516c-b53e-4be6-8bb8-cafe3ab2cec5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="PowerCallback">
+      <UniqueIdentifier>{e552128d-5cc3-4945-94ff-2db18393ea56}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="HotplugCallback">
+      <UniqueIdentifier>{093aecfb-6724-4c03-9a99-b0757496fa8a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VM">
+      <UniqueIdentifier>{4d75ebfc-7b0b-47d8-a7f7-5918b912ce3a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VM\EPT">
+      <UniqueIdentifier>{b8279a14-0b5e-414e-832e-5dd75f05dd8b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VMM">
+      <UniqueIdentifier>{5672fb52-8986-4f47-abf3-434d1348d5cd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="MyHyperPlatform.inf">
@@ -48,16 +66,64 @@
     <ClInclude Include="PerfCounter.h">
       <Filter>Performance</Filter>
     </ClInclude>
+    <ClInclude Include="Util.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="ia32_type.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="UtilPageConstants.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="PowerCallback.h">
+      <Filter>PowerCallback</Filter>
+    </ClInclude>
+    <ClInclude Include="HotplugCallback.h">
+      <Filter>HotplugCallback</Filter>
+    </ClInclude>
+    <ClInclude Include="VM.h">
+      <Filter>VM</Filter>
+    </ClInclude>
+    <ClInclude Include="ASM.h">
+      <Filter>VM</Filter>
+    </ClInclude>
+    <ClInclude Include="EPT.h">
+      <Filter>VM\EPT</Filter>
+    </ClInclude>
+    <ClInclude Include="VMM.h">
+      <Filter>VMM</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DriverEntry.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="GlobalVariables.cpp">
       <Filter>GlobalVariable</Filter>
     </ClCompile>
     <ClCompile Include="Performance.cpp">
       <Filter>Performance</Filter>
+    </ClCompile>
+    <ClCompile Include="Util.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Log.cpp">
+      <Filter>LogFile</Filter>
+    </ClCompile>
+    <ClCompile Include="DriverEntry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PowerCallback.cpp">
+      <Filter>PowerCallback</Filter>
+    </ClCompile>
+    <ClCompile Include="HotplugCallback.cpp">
+      <Filter>HotplugCallback</Filter>
+    </ClCompile>
+    <ClCompile Include="VM.cpp">
+      <Filter>VM</Filter>
+    </ClCompile>
+    <ClCompile Include="EPT.cpp">
+      <Filter>VM\EPT</Filter>
+    </ClCompile>
+    <ClCompile Include="VMM.cpp">
+      <Filter>VMM</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

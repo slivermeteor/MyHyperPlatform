@@ -6,8 +6,13 @@
 #endif
 
 #include "Common.h"
-
+#include "Log.h"
 #include "GlobalVariables.h"
+#include "PowerCallback.h"
+#include "Util.h"
+#include "Performance.h"
+#include "HotplugCallback.h"
+#include "VM.h"
 
 // 函数预声明
 DRIVER_UNLOAD DriverUnload;
@@ -21,7 +26,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	// LogFile 变量初始化
 	static const wchar_t LogFilePath[] = L"\\SystemRoot\\HyperPlatform.log";
 	static const unsigned long LogLevel = (IsReleaseBuild()) ? LogPutLevelInfo  | LogOptDisableFunctionName :
-															   LogPutLevelDebug | LogOptDisbaleFunctionName;
+															   LogPutLevelDebug | LogOptDisableFunctionName;
 
 	// UnloadDriver
 	DriverObject->DriverUnload = DriverUnload;
@@ -54,7 +59,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	// 初始化行为函数 ?
 	NtStatus = PerfInitialization();
 	if (!NT_SUCCESS(NtStatus)) {
-		GlobalObjectTermination();
+		GlobalVariablesTermination();
 		LogTermination();
 		return NtStatus;
 	}
@@ -63,7 +68,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	NtStatus = UtilInitialization(DriverObject);
 	if (!NT_SUCCESS(NtStatus)) {
 		PerfTermination();
-		GlobalObjectTermination();
+		GlobalVariablesTermination();
 		LogTermination();
 		return NtStatus;
 	}
@@ -73,7 +78,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	if (!NT_SUCCESS(NtStatus)) {
 		UtilTermination();
 		PerfTermination();
-		GlobalObjectTermination();
+		GlobalVariablesTermination();
 		LogTermination();
 		return NtStatus;
 	}
@@ -84,7 +89,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 		PowerCallbackTermination();
 		UtilTermination();
 		PerfTermination();
-		GlobalObjectTermination();
+		GlobalVariablesTermination();
 		LogTermination();
 		return NtStatus;
 	}
@@ -96,14 +101,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 		PowerCallbackTermination();
 		UtilTermination();
 		PerfTermination();
-		GlobalObjectTermination();
+		GlobalVariablesTermination();
 		LogTermination();
 		return NtStatus;
 	}
 
 	// 如果需要，注册重初始化函数为log函数
-	if (NeedReinitialization)
-		LogRegisterReinitialization(DriverObject);
+	//if (NeedReinitialization)
+	//	LogRegisterReinitialization(DriverObject);
 
 	MYHYPERPLATFORM_LOG_PRINT("The VM has been installed.");
 	return NtStatus;
@@ -135,3 +140,4 @@ BOOLEAN IsSupportedOS()
 
 	return TRUE;
 }
+
