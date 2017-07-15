@@ -28,6 +28,10 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTSTATUS UtilInitialization(_In_ PDRIVER_OBJE
 
 _IRQL_requires_max_(PASSIVE_LEVEL) void UtilTermination();
 
+// 返回物理地址范围
+// @return 永远不会失败
+const PHYSICAL_MEMORY_DESCRIPTOR* UtilGetPhysicalMemoryRanges();
+
 // PA VA PFN 三者之间的相互转换
 // PA -> PFN
 // @pa 想要得到页面号码的物理地址
@@ -47,12 +51,24 @@ ULONG64 UtilPaFromPfn(_In_ PFN_NUMBER pfn);
 // PFN -> VA
 void* UtilVaFromPfn(_In_ PFN_NUMBER pfn);
 
+// 申请连续物理内存
+// @param NumberOfBytes 申请大小
+// @return 申请得到的内存的基地址
+// @tips 申请的内存必须通过 UtilFreeContiguousMemory
+_Must_inspect_result_ _IRQL_requires_max_(DISPATCH_LEVEL)
+void* UtilAllocateContiguousMemory(_In_ SIZE_T NumberOfBytes);
+
 // MSR 操作函数
 ULONG_PTR UtilReadMsr(_In_ MSR msr);
 ULONG64 UtilReadMsr64(_In_ MSR msr);
 
 void UtilWriteMsr(_In_ MSR msr, _In_ ULONG_PTR Value);
 void UtilWriteMsr64(_In_ MSR msr, _In_ ULONG64 Value);
+
+// 输出寄存器的值
+// @param AllRegiters 要输出的寄存器
+// @param StackPointer 在调用函数之前的栈地址
+void UtilDumpGpRegisters(_In_ const ALL_REGISTERS* AllRegisters, _In_ ULONG_PTR StackPointer);
 
 EXTERN_C_END
 

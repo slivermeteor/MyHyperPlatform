@@ -2,6 +2,8 @@
 
 #include <fltKernel.h>
 
+static const SIZE_T kVmxMaxVmcsSize = 4096;
+
 // 大多数现代VMM(虚拟机监控程序)发布它们的签名通过CPUID 使用这个 FunctionCode 证明它们的存在
 static const ULONG32 HyperVCpuidInterface = 0x40000002;
 
@@ -280,3 +282,139 @@ union IA32_MTRR_PHYSICAL_MASK_MSR
 };
 static_assert(sizeof(IA32_MTRR_PHYSICAL_MASK_MSR) == 8, "Size check");
 
+// IA32_APIC_BASE MSR Supporting x2 APIC
+union IA32_APIC_BASE_MSR
+{
+	ULONG64 all;
+	struct
+	{
+		ULONG64 Reserved1 : 8;
+		ULONG64 BootstrapProcessor : 1;
+		ULONG64 Reserved2 : 1;
+		ULONG64 EnableX2apicMode : 1;
+		ULONG64 EnableX2apicGlobal : 1;
+		ULONG64 ApicBase : 24;
+	}fields;
+};
+static_assert(sizeof(IA32_APIC_BASE_MSR) == 8, "Size check");
+
+// ASM about struct
+
+/// See: SYSTEM FLAGS AND FIELDS IN THE EFLAGS REGISTER
+union FLAG_REGISTER 
+{
+	ULONG_PTR all;
+	struct {
+		ULONG_PTR cf : 1;          //!< [0] Carry flag
+		ULONG_PTR reserved1 : 1;   //!< [1] Always 1
+		ULONG_PTR pf : 1;          //!< [2] Parity flag
+		ULONG_PTR reserved2 : 1;   //!< [3] Always 0
+		ULONG_PTR af : 1;          //!< [4] Borrow flag
+		ULONG_PTR reserved3 : 1;   //!< [5] Always 0
+		ULONG_PTR zf : 1;          //!< [6] Zero flag
+		ULONG_PTR sf : 1;          //!< [7] Sign flag
+		ULONG_PTR tf : 1;          //!< [8] Trap flag
+		ULONG_PTR intf : 1;        //!< [9] Interrupt flag
+		ULONG_PTR df : 1;          //!< [10] Direction flag
+		ULONG_PTR of : 1;          //!< [11] Overflow flag
+		ULONG_PTR iopl : 2;        //!< [12:13] I/O privilege level
+		ULONG_PTR nt : 1;          //!< [14] Nested task flag
+		ULONG_PTR reserved4 : 1;   //!< [15] Always 0
+		ULONG_PTR rf : 1;          //!< [16] Resume flag
+		ULONG_PTR vm : 1;          //!< [17] Virtual 8086 mode
+		ULONG_PTR ac : 1;          //!< [18] Alignment check
+		ULONG_PTR vif : 1;         //!< [19] Virtual interrupt flag
+		ULONG_PTR vip : 1;         //!< [20] Virtual interrupt pending
+		ULONG_PTR id : 1;          //!< [21] Identification flag
+		ULONG_PTR reserved5 : 10;  //!< [22:31] Always 0
+	} fields;
+};
+static_assert(sizeof(FLAG_REGISTER) == sizeof(void*), "Size check");
+
+/// Represents a stack layout after PUSHAQ
+struct GP_REGISTER_X64
+{
+	ULONG_PTR r15;
+	ULONG_PTR r14;
+	ULONG_PTR r13;
+	ULONG_PTR r12;
+	ULONG_PTR r11;
+	ULONG_PTR r10;
+	ULONG_PTR r9;
+	ULONG_PTR r8;
+	ULONG_PTR di;
+	ULONG_PTR si;
+	ULONG_PTR bp;
+	ULONG_PTR sp;
+	ULONG_PTR bx;
+	ULONG_PTR dx;
+	ULONG_PTR cx;
+	ULONG_PTR ax;
+};
+
+/// Represents a stack layout after PUSHAD
+struct GP_REGISTER_X86
+{
+	ULONG_PTR di;
+	ULONG_PTR si;
+	ULONG_PTR bp;
+	ULONG_PTR sp;
+	ULONG_PTR bx;
+	ULONG_PTR dx;
+	ULONG_PTR cx;
+	ULONG_PTR ax;
+};
+
+#if defined(_AMD64_)
+using GP_REGISTER = GP_REGISTER_X64;
+#else
+using GP_REGISTER = GP_REGISTER_X86;
+#endif
+
+// 记录pushfx pushax 后的栈情况
+struct ALL_REGISTERS
+{
+	GP_REGISTER gp;
+	FLAG_REGISTER flags;
+};
+#if defined(_AMD64_)
+static_assert(sizeof(ALL_REGISTERS) == 0x88, "Size check");
+#else
+static_assert(sizeof(ALL_REGISTERS) == 0x24, "Size check");
+#endif
+
+// MemoryType 被用来描述 VMCS和相关结构推荐使用的 PAT 内存类型
+enum class MEMORY_TYPE : unsigned __int8
+{
+	kUncacheable = 0,
+	kWriteCombining,
+	kWriteThrough = 4,
+	kWriteProtected,
+	kWriteBack,
+	kUncached
+};
+
+// Virtual-Machine Control StruCtures 
+struct VM_CONTROL_STRUCTURE
+{
+	unsigned long RevisionIdentifier;
+	unsigned long VmxAboutIndicator;
+	unsigned long Data[1];				// 实现特殊的格式
+};
+
+// EPT Struct (EPTP 
+union EPT_POINTER
+{
+	ULONG64 all;
+	struct {
+		ULONG64 MemoryType : 3;                      //!< [0:2]
+		ULONG64 PageWalkLength : 3;                 //!< [3:5]
+		ULONG64 EnableAccessedAndDirtyFlags : 1;  //!< [6]
+		ULONG64 Reserved1 : 5;                        //!< [7:11]
+		ULONG64 Pm14Address : 36;                    //!< [12:48-1]
+		ULONG64 Reserved2 : 16;                       //!< [48:63]
+	} fields;
+};
+static_assert(sizeof(EPT_POINTER) == 8, "Size check");
+
+// 

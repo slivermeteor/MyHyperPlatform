@@ -1,0 +1,55 @@
+//++
+// PMMPTE
+// MiGetPxeAddress (
+//    IN PVOID va
+//    );
+//
+// Routine Description:
+//
+//    MiGetPxeAddress returns the address of the extended page directory parent
+//    entry which maps the given virtual address.  This is one level above the
+//    page parent directory.
+//
+// Arguments
+//
+//    Va - Supplies the virtual address to locate the PXE for.
+//
+// Return Value:
+//
+//    The address of the PXE.
+//
+//--
+
+#define MiGetPxeAddress(va)   ((PMMPTE)PXE_BASE + MiGetPxeOffset(va))
+
+//++
+// ULONG
+// MiGetPxeOffset (
+//    IN PVOID va
+//    );
+//
+// Routine Description:
+//
+//    MiGetPxeOffset returns the offset into an extended page directory parent
+//    for a given virtual address.
+//
+// Arguments
+//
+//    Va - Supplies the virtual address to locate the offset for.
+//
+// Return Value:
+//
+//    The offset into the extended parent page directory table the corresponding
+//    PXE is at.
+//
+//--
+
+#define MiGetPxeOffset(va) ((ULONG)(((ULONG_PTR)(va) >> PXI_SHIFT) & PXI_MASK))
+
+#define PXE_PER_PAGE 512
+#define PXI_MASK (PXE_PER_PAGE - 1)
+
+#define PTI_SHIFT 12
+#define PDI_SHIFT 21
+#define PPI_SHIFT 30
+#define PXI_SHIFT 39

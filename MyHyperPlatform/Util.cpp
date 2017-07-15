@@ -456,4 +456,71 @@ _Use_decl_annotations_ NTSTATUS UtilForEachProcessor(NTSTATUS(*CallbackRoutine)(
 	return STATUS_SUCCESS;
 }
 
+
+// 输出所有寄存器
+_Use_decl_annotations_ void UtilDumpGpRegisters(const ALL_REGISTERS* AllRegisters, ULONG_PTR StackPointer)
+{
+	const auto CurrentIrql = KeGetCurrentIrql();
+	if (CurrentIrql < DISPATCH_LEVEL)
+		KeRaiseIrqlToDpcLevel();
+
+#if defined(_AMD64_)
+	MYHYPERPLATFORM_LOG_DEBUG_SAFE(
+		"Context at %p: "
+		"rax= %016Ix rbx= %016Ix rcx= %016Ix "
+		"rdx= %016Ix rsi= %016Ix rdi= %016Ix "
+		"rsp= %016Ix rbp= %016Ix "
+		" r8= %016Ix  r9= %016Ix r10= %016Ix "
+		"r11= %016Ix r12= %016Ix r13= %016Ix "
+		"r14= %016Ix r15= %016Ix efl= %08Ix",
+		_ReturnAddress(), AllRegisters->gp.ax, AllRegisters->gp.bx, AllRegisters->gp.cx,
+		AllRegisters->gp.dx, AllRegisters->gp.si, AllRegisters->gp.di, StackPointer,
+		AllRegisters->gp.bp, AllRegisters->gp.r8, AllRegisters->gp.r9, AllRegisters->gp.r10,
+		AllRegisters->gp.r11, AllRegisters->gp.r12, AllRegisters->gp.r13, AllRegisters->gp.r14,
+		AllRegisters->gp.r15, AllRegisters->flags.all);
+#else
+	MYHYPERPLATFORM_LOG_DEBUG_SAFE(
+		"Context at %p: "
+		"eax= %08Ix ebx= %08Ix ecx= %08Ix "
+		"edx= %08Ix esi= %08Ix edi= %08Ix "
+		"esp= %08Ix ebp= %08Ix efl= %08x",
+		_ReturnAddress(), AllRegisters->gp.ax, AllRegisters->gp.bx, AllRegisters->gp.cx,
+		AllRegisters->gp.dx, AllRegisters->gp.si, AllRegisters->gp.di, StackPointer,
+		AllRegisters->gp.bp, AllRegisters->flags.all);
+#endif
+
+	if (CurrentIrql < DISPATCH_LEVEL)
+		KeLowerIrql(CurrentIrql);
+}
+
+// 返回物理内存范围
+const PHYSICAL_MEMORY_DESCRIPTOR* UtilGetPhysicalMemoryRanges()
+{
+	return g_UtilPhysicalMemoryRanges;
+}
+
+// 申请 连续物理内存
+_Use_decl_annotations_ void* UtilAllocateContiguousMemory(SIZE_T NumberOfBytes)
+{
+	PHYSICAL_ADDRESS HighestAcceptableAddress = { 0 };
+	HighestAcceptableAddress.QuadPart = -1;
+
+	if (g_UtilMmAllocateContiguousNodeMemory)
+	{
+		// 申请 NX 物理内存
+		PHYSICAL_ADDRESS LowestAcceptableAddress = { 0 };
+		PHYSICAL_ADDRESS BoundaryAddressMultiple = { 0 };
+		
+		return g_UtilMmAllocateContiguousNodeMemory(NumberOfBytes, LowestAcceptableAddress, HighestAcceptableAddress, BoundaryAddressMultiple, PAGE_READWRITE, MM_ANY_NODE_OK);
+	}
+	else
+	{
+#pragma warning(push)
+#pragma warning(disable : 30029)
+		return MmAllocateContiguousMemory(NumberOfBytes, HighestAcceptableAddress);
+#pragma warning(pop)
+	}
+}
+
+
 EXTERN_C_END

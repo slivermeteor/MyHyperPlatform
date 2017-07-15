@@ -276,4 +276,64 @@ _Use_decl_annotations_ static NTSTATUS VmStartVm(void* Context)
 	MYHYPERPLATFORM_LOG_INFO("Initialized successfully.");
 	return STATUS_SUCCESS;
 }
+
+// 申请虚拟化结构体，初始化VMCS区域并且虚拟化当前处理器
+_Use_decl_annotations_ static void VmInitializeVm(ULONG_PTR GuestStackPointer, ULONG_PTR GuestInstructionPointer, void* Context)
+{
+	PAGED_CODE();
+
+	const auto SharedData = reinterpret_cast<SHARED_PROCESSOR_DATA*>(Context);
+	if (!SharedData)
+		return;
+
+	// 申请相关的结构体
+	const auto ProcessorData = reinterpret_cast<PROCESSOR_DATA*>(ExAllocatePoolWithTag(NonPagedPool, sizeof(PROCESSOR_DATA), HyperPlatformCommonPoolTag));
+	if (!ProcessorData)
+		return;
+	RtlZeroMemory(ProcessorData, sizeof(PROCESSOR_DATA));
+	ProcessorData->SharedData = SharedData;
+	InterlockedIncrement(&ProcessorData->SharedData->ReferenceCount);
+
+	// 启动 EPT
+	ProcessorData->EptData = EptInitialization();
+	if (!ProcessorData->EptData)
+		goto RETURN_FALSE;
+	
+	// 申请其它处理器数据域
+	ProcessorData->VmmStackLimit = UtilAllocateContiguousMemory(KERNEL_STACK_SIZE);
+	if (!ProcessorData->VmmStackLimit)
+		goto RETURN_FALSE;
+	RtlZeroMemory(ProcessorData->VmmStackLimit, KERNEL_STACK_SIZE);
+
+	ProcessorData->VmcsRegion = reinterpret_cast<VM_CONTROL_STRUCTURE*>(ExAllocatePoolWithTag(NonPagedPool, kVmxMaxVmcsSize, HyperPlatformCommonPoolTag));
+	if (!ProcessorData->VmcsRegion)
+		goto RETURN_FALSE;
+	RtlZeroMemory(ProcessorData->VmcsRegion, kVmxMaxVmcsSize);
+
+	ProcessorData->VmxonRegion = reinterpret_cast<VM_CONTROL_STRUCTURE*>(ExAllocatePoolWithTag(NonPagedPool, kVmxMaxVmcsSize, HyperPlatformCommonPoolTag));
+	if (!ProcessorData->VmxonRegion)
+		goto RETURN_FALSE;
+	RtlZeroMemory(ProcessorData->VmxonRegion, kVmxMaxVmcsSize);
+
+	// 初始化 VMM 的栈内存
+	// (High)
+	// +------------------+  <- vmm_stack_region_base      (eg, AED37000)
+	// | processor_data   |  <- vmm_stack_data             (eg, AED36FFC)
+	// +------------------+
+	// | MAXULONG_PTR     |  <- vmm_stack_base (initial SP)(eg, AED36FF8)
+	// +------------------+    v
+	// |                  |    v
+	// | (VMM Stack)      |    v (grow)
+	// |                  |    v
+	// +------------------+  <- vmm_stack_limit            (eg, AED34000)
+	// (Low)
+
+	ProcessorData->VmcsRegion = reinterpret_cast<VM_CONTROL_STRUCTURE*>(ExAllocatePoolWithTag(NonPagedPool, kVmxMaxVmcsSize, HyperPlatformCommonPoolTag));
+
+
+
+RETURN_FALSE:
+
+}
+
 EXTERN_C_END

@@ -44,6 +44,9 @@
     <Filter Include="VMM">
       <UniqueIdentifier>{5672fb52-8986-4f47-abf3-434d1348d5cd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="VM\ASM">
+      <UniqueIdentifier>{e52137ae-aa58-430c-a967-595e28d48ef2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="MyHyperPlatform.inf">
@@ -84,14 +87,14 @@
     <ClInclude Include="VM.h">
       <Filter>VM</Filter>
     </ClInclude>
-    <ClInclude Include="ASM.h">
-      <Filter>VM</Filter>
-    </ClInclude>
     <ClInclude Include="EPT.h">
       <Filter>VM\EPT</Filter>
     </ClInclude>
     <ClInclude Include="VMM.h">
       <Filter>VMM</Filter>
+    </ClInclude>
+    <ClInclude Include="ASM.h">
+      <Filter>VM\ASM</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -125,5 +128,10 @@
     <ClCompile Include="VMM.cpp">
       <Filter>VMM</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="x86.asm">
+      <Filter>VM\ASM</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

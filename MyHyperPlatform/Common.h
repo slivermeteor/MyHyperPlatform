@@ -17,7 +17,33 @@
 		reinterpret_cast<void*>(0)
 #endif
 
+// 说明和触发BUG
+// @param TypeOfCheckBug bug类型
+// @param param1 KeBugCheckEx() 第一参数
+// @param param2 KeBugCheckEx() 第二参数
+// @param param3 KeBugCheckEx() 第三参数
+#if !defined(MYHYPERPLATFORM_COMMON_BUG_CHECK)
+#define MYHYPERPLATFORM_COMMON_BUG_CHECK(BugType, param1, param2, param3)	\
+			MYHYPERPLATFORM_COMMON_DBG_BREAK();							    \
+			const MyHyperPlatformBugCheck code = (BugType);					\
+			KeBugCheckEx(MANUALLY_INITIATED_CRASH, static_cast<ULONG>(code),\
+						(param1), (param2), (param3))
+#endif
+
+
 static const ULONG HyperPlatformCommonPoolTag = 'AazZ';
+
+// BugCheck Type for #MYHYPERPLATFORM_COMMON_BUG_CHECK
+enum class MyHyperPlatformBugCheck : ULONG
+{
+	kUnspecified,                    //!< An unspecified bug occurred
+	kUnexpectedVmExit,               //!< An unexpected VM-exit occurred
+	kTripleFaultVmExit,              //!< A triple fault VM-exit occurred
+	kExhaustedPreallocatedEntries,   //!< All pre-allocated entries are used
+	kCriticalVmxInstructionFailure,  //!< VMRESUME or VMXOFF has failed
+	kEptMisconfigVmExit,             //!< EPT misconfiguration VM-exit occurred
+	kCritialPoolAllocationFailure,   //!< Critical pool allocation failed
+};
 
 // 判断是否是 64 位系统
 // @return 当系统是64位，返回 true 
