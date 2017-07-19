@@ -2,6 +2,7 @@
 #include <intrin.h>
 #include "Common.h"
 #include "Log.h"
+#include "ASM.h"
 
 EXTERN_C_START
 
@@ -522,5 +523,96 @@ _Use_decl_annotations_ void* UtilAllocateContiguousMemory(SIZE_T NumberOfBytes)
 	}
 }
 
+VMX_STATUS UtilInveptGlobal()
+{
+	// 2.6.7.1 
+	// 三种映射机制
+	INV_EPT_DESCRIPTOR InvEptDescriptor = { 0 };
+	return static_cast<VMX_STATUS>(AsmInvept(INV_EPT_TYPE::kGlobalInvalidation, &InvEptDescriptor));
+}
 
+VMX_STATUS UtilInvvpidAllContext()
+{
+	INV_VPID_DESCRIPTOR InvVpidDescriptor = { 0 };	
+	return static_cast<VMX_STATUS>(AsmInvvpid(INV_VPID_TYPE::kAllContextInvalidation, &InvVpidDescriptor));
+}
+
+_Use_decl_annotations_ VMX_STATUS UtilVmWrite(VMCS_FIELD Field, ULONG_PTR FieldValue)
+{
+	return static_cast<VMX_STATUS>(__vmx_vmwrite(static_cast<size_t>(Field), FieldValue));
+}
+
+_Use_decl_annotations_ VMX_STATUS UtilVmWrite64(VMCS_FIELD Field, ULONG64 FieldValue)
+{
+#if defined(_AMD64_)
+	return UtilVmWrite(Field, FieldValue);
+#else
+	// 当32位机器，操作64位域时。触发 - 这种情况下 每个域有两部分组成
+	// 同时这个域的编号 必定是偶数
+	NT_ASSERT(UtilIsInBounds(Field, VMCS_FIELD::kIoBitmapA, VMCS_FIELD::kHostIa32PerfGlobalCtrlHigh));
+	NT_ASSERT((static_cast<ULONG>(Field) % 2) == 0);
+
+	ULARGE_INTEGER Value64 = { 0 };
+	Value64.QuadPart = FieldValue;
+
+	const auto VmxStatus = UtilVmWrite(Field, Value64.LowPart);
+	if (VmxStatus != VMX_STATUS::kOk)
+		return VmxStatus;
+
+	return UtilVmWrite(static_cast<VMCS_FIELD>(static_cast<ULONG>(Field) + 1), Value64.HighPart);
+#endif
+}
+
+// 从CE3 加载 PDPTE
+_Use_decl_annotations_ void UtilLoadPdptes(ULONG_PTR Cr3Value)
+{
+	const auto CurCr3 = __readcr3();
+
+	__writecr3(Cr3Value);
+
+	PDPTR_REGISTER Pdptrs[4] = { 0 };
+	for (auto i = 0; i < 4; i++)
+	{
+		const auto PdptrAddr = g_UtilPDEBase + i * PAGE_SIZE;	// PDE 之间其实是紧邻排列的
+		Pdptrs[i].fields.Present = true;
+		Pdptrs[i].fields.PageDirectoryPhysicalAddr = UtilPaFromVa(reinterpret_cast<void*>(PdptrAddr));
+	}
+
+	__writecr3(CurCr3);
+	UtilVmWrite64(VMCS_FIELD::kGuestPdptr0, Pdptrs[0].all);
+	UtilVmWrite64(VMCS_FIELD::kGuestPdptr0, Pdptrs[1].all);
+	UtilVmWrite64(VMCS_FIELD::kGuestPdptr0, Pdptrs[2].all);
+	UtilVmWrite64(VMCS_FIELD::kGuestPdptr0, Pdptrs[3].all);
+}
+
+// 读取 VMCS 域值
+_Use_decl_annotations_ ULONG_PTR UtilVmRead(VMCS_FIELD Field)
+{
+	size_t FieldValue = 0;
+	const auto VmxStatus = static_cast<VMX_STATUS>(__vmx_vmread(static_cast<size_t>(Field), &FieldValue));
+	
+	if (VmxStatus != VMX_STATUS::kOk)
+	{
+		MYHYPERPLATFORM_COMMON_BUG_CHECK(HYPERPLATFORM_BUG_CHECK::kCriticalVmxInstructionFailure, static_cast<ULONG_PTR>(VmxStatus), static_cast<ULONG_PTR>(Field), 0);
+	}
+
+	return FieldValue;
+}
+
+_Use_decl_annotations_ NTSTATUS UtilVmCall(HYPERCALL_NUMBER HypercallNumber, void* Context)
+{
+	__try
+	{
+		const auto VmxStatus = static_cast<VMX_STATUS>(AsmVmxCall(static_cast<ULONG>(HypercallNumber), Context));
+
+		return (VmxStatus == VMX_STATUS::kOk) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		const auto NtStatus = GetExceptionCode();
+		MYHYPERPLATFORM_COMMON_DBG_BREAK();
+		MYHYPERPLATFORM_LOG_WARN_SAFE("Exception thrown (code %08x)", NtStatus);
+		return NtStatus;
+	}
+}
 EXTERN_C_END

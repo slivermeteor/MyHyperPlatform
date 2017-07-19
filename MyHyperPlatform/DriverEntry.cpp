@@ -14,6 +14,8 @@
 #include "HotplugCallback.h"
 #include "VM.h"
 
+EXTERN_C_START
+
 // 函数预声明
 DRIVER_UNLOAD DriverUnload;
 BOOLEAN IsSupportedOS();
@@ -22,7 +24,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 {
 	NTSTATUS NtStatus = STATUS_UNSUCCESSFUL;
 	BOOLEAN NeedReinitialization = FALSE;
-
+	
+	UNREFERENCED_PARAMETER(RegisterPath);
+	UNREFERENCED_PARAMETER(DriverObject);
 	// LogFile 变量初始化
 	static const wchar_t LogFilePath[] = L"\\SystemRoot\\HyperPlatform.log";
 	static const unsigned long LogLevel = (IsReleaseBuild()) ? LogPutLevelInfo  | LogOptDisableFunctionName :
@@ -116,7 +120,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 VOID DriverUnload(PDRIVER_OBJECT DriverObject)
 {
-
+	UNREFERENCED_PARAMETER(DriverObject);
 }
 
 // 检查系统是否支持
@@ -141,3 +145,4 @@ BOOLEAN IsSupportedOS()
 	return TRUE;
 }
 
+EXTERN_C_END

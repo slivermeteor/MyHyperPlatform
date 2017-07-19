@@ -165,6 +165,213 @@ enum class MemoryType : unsigned __int8
 	kUncached = 7
 };
 
+/// See: FIELD ENCODING IN VMCS
+enum class VMCS_FIELD : unsigned __int32 {
+	// 16-Bit Control Field
+	kVirtualProcessorId = 0x00000000,
+	kPostedInterruptNotification = 0x00000002,
+	kEptpIndex = 0x00000004,
+	// 16-Bit Guest-State Fields
+	kGuestEsSelector = 0x00000800,
+	kGuestCsSelector = 0x00000802,
+	kGuestSsSelector = 0x00000804,
+	kGuestDsSelector = 0x00000806,
+	kGuestFsSelector = 0x00000808,
+	kGuestGsSelector = 0x0000080a,
+	kGuestLdtrSelector = 0x0000080c,
+	kGuestTrSelector = 0x0000080e,
+	kGuestInterruptStatus = 0x00000810,
+	kPmlIndex = 0x00000812,
+	// 16-Bit Host-State Fields
+	kHostEsSelector = 0x00000c00,
+	kHostCsSelector = 0x00000c02,
+	kHostSsSelector = 0x00000c04,
+	kHostDsSelector = 0x00000c06,
+	kHostFsSelector = 0x00000c08,
+	kHostGsSelector = 0x00000c0a,
+	kHostTrSelector = 0x00000c0c,
+	// 64-Bit Control Fields
+	kIoBitmapA = 0x00002000,
+	kIoBitmapAHigh = 0x00002001,
+	kIoBitmapB = 0x00002002,
+	kIoBitmapBHigh = 0x00002003,
+	kMsrBitmap = 0x00002004,
+	kMsrBitmapHigh = 0x00002005,
+	kVmExitMsrStoreAddr = 0x00002006,
+	kVmExitMsrStoreAddrHigh = 0x00002007,
+	kVmExitMsrLoadAddr = 0x00002008,
+	kVmExitMsrLoadAddrHigh = 0x00002009,
+	kVmEntryMsrLoadAddr = 0x0000200a,
+	kVmEntryMsrLoadAddrHigh = 0x0000200b,
+	kExecutiveVmcsPointer = 0x0000200c,
+	kExecutiveVmcsPointerHigh = 0x0000200d,
+	kTscOffset = 0x00002010,
+	kTscOffsetHigh = 0x00002011,
+	kVirtualApicPageAddr = 0x00002012,
+	kVirtualApicPageAddrHigh = 0x00002013,
+	kApicAccessAddr = 0x00002014,
+	kApicAccessAddrHigh = 0x00002015,
+	kEptPointer = 0x0000201a,
+	kEptPointerHigh = 0x0000201b,
+	kEoiExitBitmap0 = 0x0000201c,
+	kEoiExitBitmap0High = 0x0000201d,
+	kEoiExitBitmap1 = 0x0000201e,
+	kEoiExitBitmap1High = 0x0000201f,
+	kEoiExitBitmap2 = 0x00002020,
+	kEoiExitBitmap2High = 0x00002021,
+	kEoiExitBitmap3 = 0x00002022,
+	kEoiExitBitmap3High = 0x00002023,
+	kEptpListAddress = 0x00002024,
+	kEptpListAddressHigh = 0x00002025,
+	kVmreadBitmapAddress = 0x00002026,
+	kVmreadBitmapAddressHigh = 0x00002027,
+	kVmwriteBitmapAddress = 0x00002028,
+	kVmwriteBitmapAddressHigh = 0x00002029,
+	kVirtualizationExceptionInfoAddress = 0x0000202a,
+	kVirtualizationExceptionInfoAddressHigh = 0x0000202b,
+	kXssExitingBitmap = 0x0000202c,
+	kXssExitingBitmapHigh = 0x0000202d,
+	kEnclsExitingBitmap = 0x0000202e,
+	kEnclsExitingBitmapHigh = 0x0000202f,
+	kTscMultiplier = 0x00002032,
+	kTscMultiplierHigh = 0x00002033,
+	// 64-Bit Read-Only Data Field
+	kGuestPhysicalAddress = 0x00002400,
+	kGuestPhysicalAddressHigh = 0x00002401,
+	// 64-Bit Guest-State Fields
+	kVmcsLinkPointer = 0x00002800,
+	kVmcsLinkPointerHigh = 0x00002801,
+	kGuestIa32Debugctl = 0x00002802,
+	kGuestIa32DebugctlHigh = 0x00002803,
+	kGuestIa32Pat = 0x00002804,
+	kGuestIa32PatHigh = 0x00002805,
+	kGuestIa32Efer = 0x00002806,
+	kGuestIa32EferHigh = 0x00002807,
+	kGuestIa32PerfGlobalCtrl = 0x00002808,
+	kGuestIa32PerfGlobalCtrlHigh = 0x00002809,
+	kGuestPdptr0 = 0x0000280a,
+	kGuestPdptr0High = 0x0000280b,
+	kGuestPdptr1 = 0x0000280c,
+	kGuestPdptr1High = 0x0000280d,
+	kGuestPdptr2 = 0x0000280e,
+	kGuestPdptr2High = 0x0000280f,
+	kGuestPdptr3 = 0x00002810,
+	kGuestPdptr3High = 0x00002811,
+	kGuestIa32Bndcfgs = 0x00002812,
+	kGuestIa32BndcfgsHigh = 0x00002813,
+	// 64-Bit Host-State Fields
+	kHostIa32Pat = 0x00002c00,
+	kHostIa32PatHigh = 0x00002c01,
+	kHostIa32Efer = 0x00002c02,
+	kHostIa32EferHigh = 0x00002c03,
+	kHostIa32PerfGlobalCtrl = 0x00002c04,
+	kHostIa32PerfGlobalCtrlHigh = 0x00002c05,
+	// 32-Bit Control Fields
+	kPinBasedVmExecControl = 0x00004000,
+	kCpuBasedVmExecControl = 0x00004002,
+	kExceptionBitmap = 0x00004004,
+	kPageFaultErrorCodeMask = 0x00004006,
+	kPageFaultErrorCodeMatch = 0x00004008,
+	kCr3TargetCount = 0x0000400a,
+	kVmExitControls = 0x0000400c,
+	kVmExitMsrStoreCount = 0x0000400e,
+	kVmExitMsrLoadCount = 0x00004010,
+	kVmEntryControls = 0x00004012,
+	kVmEntryMsrLoadCount = 0x00004014,
+	kVmEntryIntrInfoField = 0x00004016,
+	kVmEntryExceptionErrorCode = 0x00004018,
+	kVmEntryInstructionLen = 0x0000401a,
+	kTprThreshold = 0x0000401c,
+	kSecondaryVmExecControl = 0x0000401e,
+	kPleGap = 0x00004020,
+	kPleWindow = 0x00004022,
+	// 32-Bit Read-Only Data Fields
+	kVmInstructionError = 0x00004400,  // See: VM-Instruction Error Numbers
+	kVmExitReason = 0x00004402,
+	kVmExitIntrInfo = 0x00004404,
+	kVmExitIntrErrorCode = 0x00004406,
+	kIdtVectoringInfoField = 0x00004408,
+	kIdtVectoringErrorCode = 0x0000440a,
+	kVmExitInstructionLen = 0x0000440c,
+	kVmxInstructionInfo = 0x0000440e,
+	// 32-Bit Guest-State Fields
+	kGuestEsLimit = 0x00004800,
+	kGuestCsLimit = 0x00004802,
+	kGuestSsLimit = 0x00004804,
+	kGuestDsLimit = 0x00004806,
+	kGuestFsLimit = 0x00004808,
+	kGuestGsLimit = 0x0000480a,
+	kGuestLdtrLimit = 0x0000480c,
+	kGuestTrLimit = 0x0000480e,
+	kGuestGdtrLimit = 0x00004810,
+	kGuestIdtrLimit = 0x00004812,
+	kGuestEsArBytes = 0x00004814,
+	kGuestCsArBytes = 0x00004816,
+	kGuestSsArBytes = 0x00004818,
+	kGuestDsArBytes = 0x0000481a,
+	kGuestFsArBytes = 0x0000481c,
+	kGuestGsArBytes = 0x0000481e,
+	kGuestLdtrArBytes = 0x00004820,
+	kGuestTrArBytes = 0x00004822,
+	kGuestInterruptibilityInfo = 0x00004824,
+	kGuestActivityState = 0x00004826,
+	kGuestSmbase = 0x00004828,
+	kGuestSysenterCs = 0x0000482a,
+	kVmxPreemptionTimerValue = 0x0000482e,
+	// 32-Bit Host-State Field
+	kHostIa32SysenterCs = 0x00004c00,
+	// Natural-Width Control Fields
+	kCr0GuestHostMask = 0x00006000,
+	kCr4GuestHostMask = 0x00006002,
+	kCr0ReadShadow = 0x00006004,
+	kCr4ReadShadow = 0x00006006,
+	kCr3TargetValue0 = 0x00006008,
+	kCr3TargetValue1 = 0x0000600a,
+	kCr3TargetValue2 = 0x0000600c,
+	kCr3TargetValue3 = 0x0000600e,
+	// Natural-Width Read-Only Data Fields
+	kExitQualification = 0x00006400,
+	kIoRcx = 0x00006402,
+	kIoRsi = 0x00006404,
+	kIoRdi = 0x00006406,
+	kIoRip = 0x00006408,
+	kGuestLinearAddress = 0x0000640a,
+	// Natural-Width Guest-State Fields
+	kGuestCr0 = 0x00006800,
+	kGuestCr3 = 0x00006802,
+	kGuestCr4 = 0x00006804,
+	kGuestEsBase = 0x00006806,
+	kGuestCsBase = 0x00006808,
+	kGuestSsBase = 0x0000680a,
+	kGuestDsBase = 0x0000680c,
+	kGuestFsBase = 0x0000680e,
+	kGuestGsBase = 0x00006810,
+	kGuestLdtrBase = 0x00006812,
+	kGuestTrBase = 0x00006814,
+	kGuestGdtrBase = 0x00006816,
+	kGuestIdtrBase = 0x00006818,
+	kGuestDr7 = 0x0000681a,
+	kGuestRsp = 0x0000681c,
+	kGuestRip = 0x0000681e,
+	kGuestRflags = 0x00006820,
+	kGuestPendingDbgExceptions = 0x00006822,
+	kGuestSysenterEsp = 0x00006824,
+	kGuestSysenterEip = 0x00006826,
+	// Natural-Width Host-State Fields
+	kHostCr0 = 0x00006c00,
+	kHostCr3 = 0x00006c02,
+	kHostCr4 = 0x00006c04,
+	kHostFsBase = 0x00006c06,
+	kHostGsBase = 0x00006c08,
+	kHostTrBase = 0x00006c0a,
+	kHostGdtrBase = 0x00006c0c,
+	kHostIdtrBase = 0x00006c0e,
+	kHostIa32SysenterEsp = 0x00006c10,
+	kHostIa32SysenterEip = 0x00006c12,
+	kHostRsp = 0x00006c14,
+	kHostRip = 0x00006c16
+};
+
 /// See: ARCHITECTURAL MSRS
 union IA32_FEATURE_CONTROL_MSR
 {
@@ -383,6 +590,46 @@ static_assert(sizeof(ALL_REGISTERS) == 0x88, "Size check");
 static_assert(sizeof(ALL_REGISTERS) == 0x24, "Size check");
 #endif
 
+/// See: CONTROL REGISTERS
+union CR0 {
+	ULONG_PTR all;
+	struct {
+		unsigned pe : 1;          //!< [0] Protected Mode Enabled
+		unsigned mp : 1;          //!< [1] Monitor Coprocessor FLAG
+		unsigned em : 1;          //!< [2] Emulate FLAG
+		unsigned ts : 1;          //!< [3] Task Switched FLAG
+		unsigned et : 1;          //!< [4] Extension Type FLAG
+		unsigned ne : 1;          //!< [5] Numeric Error
+		unsigned reserved1 : 10;  //!< [6:15]
+		unsigned wp : 1;          //!< [16] Write Protect
+		unsigned reserved2 : 1;   //!< [17]
+		unsigned am : 1;          //!< [18] Alignment Mask
+		unsigned reserved3 : 10;  //!< [19:28]
+		unsigned nw : 1;          //!< [29] Not Write-Through
+		unsigned cd : 1;          //!< [30] Cache Disable
+		unsigned pg : 1;          //!< [31] Paging Enabled
+	} fields;
+};
+static_assert(sizeof(CR0) == sizeof(void*), "Size check");
+
+// GPTR IDTR
+#include <pshpack1.h>
+struct  IDTR
+{
+	unsigned short Limit;
+	ULONG_PTR Base;
+};
+
+using GDTR = IDTR;
+#if defined(_AMD64_)
+static_assert(sizeof(IDTR) == 10, "Size check");
+static_assert(sizeof(GDTR) == 10, "Size check");
+#else
+static_assert(sizeof(IDTR) == 6, "Size check");
+static_assert(sizeof(GDTR) == 6, "Size check");
+#endif
+#include <poppack.h>
+
 // MemoryType 被用来描述 VMCS和相关结构推荐使用的 PAT 内存类型
 enum class MEMORY_TYPE : unsigned __int8
 {
@@ -402,6 +649,142 @@ struct VM_CONTROL_STRUCTURE
 	unsigned long Data[1];				// 实现特殊的格式
 };
 
+
+// 3.5 Pin-Based VM-Execution Controls
+union VMX_PINBASED_CONTROLS
+{
+	unsigned int all;
+	struct
+	{
+		unsigned ExternalInterruptExiting : 1;
+		unsigned Reserved1 : 2;
+		unsigned NmiExiting : 1;
+		unsigned Reserved2 : 1;
+		unsigned VirtualNmis : 1;
+		unsigned ActivateVmxPeemptionTimer : 1;
+		unsigned ProcessPostedInterrupts : 1;
+	}fields;
+};
+static_assert(sizeof(VMX_PINBASED_CONTROLS) == 4, "Size check");
+
+// Primary Processor-Based VM-Execution Controls
+union VMX_PROCESSOR_BASED_CONTROLS
+{
+	unsigned int all;
+	struct  
+	{
+		unsigned Reserved1 : 2;					//!< [0:1]
+		unsigned InterruptWindowExiting : 1;	//!< [2]
+		unsigned UseTscOffseting : 1;			//!< [3]
+		unsigned Reserved2 : 3;					//!< [4:6]
+		unsigned HltExiting : 1;				//!< [7]
+		unsigned Reserved3 : 1;					//!< [8]
+		unsigned InvlpgExiting : 1;				//!< [9]
+		unsigned MwaitExiting : 1;				//!< [10]
+		unsigned RdpmcExiting : 1;				//!< [11]
+		unsigned RdtscExiting : 1;				//!< [12]
+		unsigned Reserved4 : 1;					//!< [13:14]
+		unsigned Cr3LoadExiting : 1;			//!< [15]
+		unsigned Cr3StoreExiting : 1;			//!< [16]
+		unsigned Reserved5 : 2;					//!< [17:18]
+		unsigned Cr8LoadExiting : 1;			//!< [19]
+		unsigned Cr8StoreExiting : 1;			//!< [20]
+		unsigned UseTprShadow : 1;				//!< [21]
+		unsigned NmiWindowExiting : 1;			//!< [22]
+		unsigned MovDrExiting : 1;				//!< [23]
+		unsigned UnconditionalIoExiting : 1;	//!< [24]
+		unsigned UseIoBitmap : 1;				//!< [25]
+		unsigned Reserved6 : 1;					//!< [26]
+		unsigned MonitorTrapFlag : 1;			//!< [27]
+		unsigned UseMsrBitmaps : 1;				//!< [28]
+		unsigned MonitorExiting : 1;			//!< [29]
+		unsigned PauseExiting : 1;				//!< [30]
+		unsigned ActivateSecondaryControl : 1;	//!< [31]
+	}fields;
+};
+static_assert(sizeof(VMX_PROCESSOR_BASED_CONTROLS) == 4, "Size check");
+
+union VMX_SECONDARY_PROCESSOR_BASED_CONTROLS
+{
+	unsigned int all;
+	struct 
+	{
+		unsigned VirtualizeApicAccessed : 1;			//!< [0]	
+		unsigned EnableEpt : 1;							//!< [1]
+		unsigned DescriptorTableExiting : 1;			//!< [2]
+		unsigned EnableRdtscap : 1;						//!< [3]
+		unsigned VirtualizeX2apicMode : 1;				//!< [4]
+		unsigned EnableVpid : 1;						//!< [5]
+		unsigned WbinvdExiting : 1;						//!< [6]
+		unsigned UnrestrictedGuest : 1;					//!< [7]
+		unsigned ApicRegisterVirtualization : 1;		//!< [8]
+		unsigned VirtualInterruptDelivery : 1;			//!< [9]
+		unsigned PauseLoopExiting : 1;					//!< [10]
+		unsigned RdrandExiting : 1;						//!< [11]
+		unsigned EnableInvpcid : 1;						//!< [12]
+		unsigned EnableVmFunctions : 1;					//!< [13]
+		unsigned VmcsShadowing : 1;						//!< [14]
+		unsigned Reserved1 : 1;							//!< [15]
+		unsigned RdseedExiting : 1;						//!< [16]
+		unsigned Reserved2 : 1;							//!< [17]
+		unsigned EptViolationVe : 1;					//!< [18]
+		unsigned Reserved3 : 1;							//!< [19]
+		unsigned EnableXsavedXstors : 1;				//!< [20]
+		unsigned Reserved4 : 1;							//!< [21]
+		unsigned ModeBasedExecuteControlForEpt : 1;		//!< [22]
+		unsigned Reserved5 : 2;							//!< [23:24]
+		unsigned UseTscScaling : 1;						//!< [25]
+	}fields;
+};
+static_assert(sizeof(VMX_SECONDARY_PROCESSOR_BASED_CONTROLS) == 4, "Size check");
+
+// VM-Entry
+union VMX_VMENTRY_CONTROLS
+{
+	unsigned int all;
+	struct
+	{
+		unsigned Reserved1 : 2;                          //!< [0:1]
+		unsigned LoadDebugControls : 1;                  //!< [2]
+		unsigned Reserved2 : 6;                          //!< [3:8]
+		unsigned Ia32eModeGuest : 1;                     //!< [9]
+		unsigned EntryToSmm : 1;                         //!< [10]
+		unsigned DeactivateDualMonitorTreatment : 1;     //!< [11]
+		unsigned Reserved3 : 1;                          //!< [12]
+		unsigned LoadIa32PerfGlobalCtrl : 1;             //!< [13]
+		unsigned LoadIa32Pat : 1;                        //!< [14]
+		unsigned LoadIa32Efer : 1;                       //!< [15]
+		unsigned LoadIa32Bndcfgs : 1;                    //!< [16]
+		unsigned ConcealVmentriesFromIntelPt : 1;        //!< [17]
+	}fields;
+};
+static_assert(sizeof(VMX_VMENTRY_CONTROLS) == 4, "Size check");
+
+union VMX_VMEXIT_CONTROLS
+{
+	unsigned int all;
+	struct
+	{
+		unsigned Reserved1 : 2;                        //!< [0:1]
+		unsigned SaveDebugControls : 1;                //!< [2]
+		unsigned Reserved2 : 6;                        //!< [3:8]
+		unsigned HostAddressSpaceSize : 1;             //!< [9]
+		unsigned Reserved3 : 2;                        //!< [10:11]
+		unsigned LoadIa32PerfGlobalCtrl : 1;           //!< [12]
+		unsigned Reserver4 : 2;                        //!< [13:14]
+		unsigned AcknowledgeInterruptOnExit : 1;       //!< [15]
+		unsigned Reserved5 : 2;                        //!< [16:17]
+		unsigned SaveIa32Pat : 1;                      //!< [18]
+		unsigned LoadIa32Pat : 1;                      //!< [19]
+		unsigned SaveIa32Efer : 1;                     //!< [20]
+		unsigned LoadIa32Efer : 1;                     //!< [21]
+		unsigned SaveVmxPreemptionTimerValue : 1;      //!< [22]
+		unsigned ClearIa32Bndcfgs : 1;                 //!< [23]
+		unsigned ConcealVmexitsFromIntelPt : 1;        //!< [24]
+	}fields;
+};
+static_assert(sizeof(VMX_VMEXIT_CONTROLS) == 4, "Size check");
+
 // EPT Struct (EPTP 
 union EPT_POINTER
 {
@@ -417,4 +800,110 @@ union EPT_POINTER
 };
 static_assert(sizeof(EPT_POINTER) == 8, "Size check");
 
-// 
+struct INV_EPT_DESCRIPTOR
+{
+	EPT_POINTER EptPointer;
+	ULONG64		Reserved1;
+};
+static_assert(sizeof(INV_EPT_DESCRIPTOR) == 16, "Size check");
+
+enum class INV_EPT_TYPE : ULONG_PTR
+{
+	kSingleContextInvalidation = 1,
+	kGlobalInvalidation
+};
+
+// INVVPID 指令描述符
+struct INV_VPID_DESCRIPTOR
+{
+	USHORT Vpid;
+	USHORT Reserved1;
+	USHORT Reserved2;
+	ULONG64 LinearAddress;
+};
+static_assert(sizeof(INV_VPID_DESCRIPTOR) == 16, "Size check");
+
+enum class INV_VPID_TYPE : ULONG_PTR
+{
+	kIndividualAddressInvalidation = 0,
+	kSingleContextInvalidation,
+	kAllContextInvalidation ,
+	kSingleContextInvalidationExceptGlobal
+};
+
+/// See: PDPTE Registers
+union PDPTR_REGISTER {
+	ULONG64 all;
+	struct {
+		ULONG64 Present : 1;             //!< [0]
+		ULONG64 Reserved1 : 2;           //!< [1:2]
+		ULONG64 WriteThrough : 1;       //!< [3]
+		ULONG64 CacheDisable : 1;       //!< [4]
+		ULONG64 Reserved2 : 4;           //!< [5:8]
+		ULONG64 Ignored : 3;             //!< [9:11]
+		ULONG64 PageDirectoryPhysicalAddr : 41;  //!< [12:52]
+		ULONG64 Reserved3 : 11;          //!< [53:63]
+	} fields;
+};
+static_assert(sizeof(PDPTR_REGISTER) == 8, "Size check");
+
+union VMX_REGMENT_DESCRIPTOR_ACCESS_RIGHT
+{
+	unsigned int all;
+	struct 
+	{
+		unsigned Type : 4;			//!< [0:3]
+		unsigned System : 1;		//!< [4]
+		unsigned Dpl : 2;			//!< [5:6]
+		unsigned Present : 1;		//!< [7]
+		unsigned Reserved1 : 4;		//!< [8:11]
+		unsigned Avl : 1;			//!< [12]
+		unsigned l : 1;				//!< [13] Reserved (except for CS) 64-bit mode
+		unsigned Db : 1;			//!< [14]
+		unsigned Gran : 1;			//!< [15]
+		unsigned Unusable : 1;		//!< [16] Segment unusable
+		unsigned Reserved2 : 15;	//!< [17:31]
+	}fields;
+};
+static_assert(sizeof(VMX_REGMENT_DESCRIPTOR_ACCESS_RIGHT) == 4, "Size check");
+
+#include <pshpack1.h>
+union SEGMENT_SELECTOR {
+	unsigned short all;
+	struct {
+		unsigned short Rpl : 2;  //!< Requested Privilege Level
+		unsigned short Ti : 1;   //!< Table Indicator
+		unsigned short Index : 13;
+	} fields;
+};
+static_assert(sizeof(SEGMENT_SELECTOR) == 2, "Size check");
+#include <poppack.h>
+
+union SEGMENT_DESCRIPTOR {
+	ULONG64 all;
+	struct {
+		ULONG64 LimitLow : 16;
+		ULONG64 BaseLow : 16;
+		ULONG64 BaseMid : 8;
+		ULONG64 Type : 4;
+		ULONG64 System : 1;
+		ULONG64 Dpl : 2;
+		ULONG64 Present : 1;
+		ULONG64 LimitHigh : 4;
+		ULONG64 Avl : 1;
+		ULONG64 L : 1;  //!< 64-bit code segment (IA-32e mode only)
+		ULONG64 Db : 1;
+		ULONG64 Gran : 1;
+		ULONG64 BaseHigh : 8;
+	} fields;
+};
+static_assert(sizeof(SEGMENT_DESCRIPTOR) == 8, "Size check");
+
+/// @copydoc SegmentDescriptor
+struct SEGMENT_DESCRIPTOR_X64 
+{
+	SEGMENT_DESCRIPTOR Descriptor;
+	ULONG32 BaseUpper32;
+	ULONG32 Reserved;
+};
+static_assert(sizeof(SEGMENT_DESCRIPTOR_X64) == 16, "Size check");

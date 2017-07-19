@@ -48,6 +48,8 @@ NTKERNELAPI UCHAR* NTAPI PsGetProcessImageFileName(_In_ PEPROCESS Process);
 
 _IRQL_requires_max_(PASSIVE_LEVEL) static void LogFinalizeBufferInfo(_In_ LOG_BUFFER_INFO* LogBufferInfo);
 
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogInitializeBufferInfo(_In_ const wchar_t* LogFilePath, _Inout_ LOG_BUFFER_INFO* LogBufferInfo);
+
 static bool LogIsLogNeeded(_In_ ULONG Level);
 
 static bool LogIsDbgPrintNeeded();
@@ -70,7 +72,11 @@ static bool LogIsPrinted(char *Message);
 
 static void LogSetPrintedBit(_In_z_ char *Message, _In_ bool on);
 
-_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogWriteMessageToFile(_In_z_ char* Message, _In_ const LOG_BUFFER_INFO& LogBufferInfo);
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogFlushLogBuffer(_Inout_ LOG_BUFFER_INFO* LogBufferInfo);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogWriteMessageToFile(_In_z_ const char* Message, _In_ const LOG_BUFFER_INFO& LogBufferInfo);
+
+static NTSTATUS LogBufferMessage(_In_z_ const char* Message,_Inout_ LOG_BUFFER_INFO* LogBufferInfo);
 
 _IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogInitializeLogFile(_Inout_ LOG_BUFFER_INFO* LogBufferInfo); 
 

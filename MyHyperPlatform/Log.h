@@ -23,6 +23,15 @@ EXTERN_C_START
 #define MYHYPERPLATFORM_LOG_DEBUG_SAFE(Format, ...) \
 	LogPrint(LogLevelDebug | LogLevelOptSafe, __FUNCTION__, (Format), __VA_ARGS__)
 
+#define MYHYPERPLATFORM_LOG_WARN_SAFE(Format, ...) \
+	LogPrint(LogLevelWarn | LogLevelOptSafe, __FUNCTION__, (Format), __VA_ARGS__)
+
+#define MYHYPERPLATFORM_LOG_ERROR_SAFE(Format, ...) \
+	LogPrint(LogLevelError | LogLevelOptSafe, __FUNCTION__, (Format), __VA_ARGS__)
+
+#define MYHYPERPLATFORM_LOG_INFO_SAFE(Format, ...) \
+	LogPrint(LogLevelInfo | LogLevelOptSafe, __FUNCTION__, (Format), __VA_ARGS__)
+
 // 决定Log消息是写入文件还是输出
 static const auto LogLevelOptSafe = 0x1ul;
 

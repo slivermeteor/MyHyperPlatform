@@ -25,16 +25,18 @@
 #if !defined(MYHYPERPLATFORM_COMMON_BUG_CHECK)
 #define MYHYPERPLATFORM_COMMON_BUG_CHECK(BugType, param1, param2, param3)	\
 			MYHYPERPLATFORM_COMMON_DBG_BREAK();							    \
-			const MyHyperPlatformBugCheck code = (BugType);					\
+			const HYPERPLATFORM_BUG_CHECK code = (BugType);					\
 			KeBugCheckEx(MANUALLY_INITIATED_CRASH, static_cast<ULONG>(code),\
 						(param1), (param2), (param3))
 #endif
 
+// 启动 | 关闭 全局行为记录
+#define MYHYPERPLATFORM_PERFORMANCE_ENABLE_PERFCOUNTER 1
 
 static const ULONG HyperPlatformCommonPoolTag = 'AazZ';
 
 // BugCheck Type for #MYHYPERPLATFORM_COMMON_BUG_CHECK
-enum class MyHyperPlatformBugCheck : ULONG
+enum class HYPERPLATFORM_BUG_CHECK : ULONG
 {
 	kUnspecified,                    //!< An unspecified bug occurred
 	kUnexpectedVmExit,               //!< An unexpected VM-exit occurred

@@ -1,5 +1,6 @@
 #include "common.h"
 #include "Performance.h"
+#include "Log.h"
 
 static PERF_COLLECTOR::INITIAL_OUTPUT_ROUTINE PerfInitialOutputRoutine;
 static PERF_COLLECTOR::FINAL_OUTPUT_ROUTINE PerfFinalOutputRoutine;
@@ -46,16 +47,22 @@ _Use_decl_annotations_ void PerfTermination()
 _Use_decl_annotations_ static void PerfInitialOutputRoutine(void* OutputContext)
 {
 	UNREFERENCED_PARAMETER(OutputContext);
-	//HYPERPLATFORM_LOG_INFO("%-45s,%-20s,%-20s", "FunctionName(Line)","Execution Count", "Elapsed Time");
+	MYHYPERPLATFORM_LOG_INFO("%-45s,%-20s,%-20s", "FunctionName(Line)","Execution Count", "Elapsed Time");
 }
 
 _Use_decl_annotations_ static void PerfOutputRoutine(const char* LocationName, ULONG64 TotalExecutionCount, ULONG64 TotalElapsedTime, void* OutputContext)
 {
 	UNREFERENCED_PARAMETER(OutputContext);
-    //HYPERPLATFORM_LOG_INFO("%-45s,%20I64u,%20I64u,", location_name, total_execution_count, total_elapsed_time);
+    MYHYPERPLATFORM_LOG_INFO("%-45s,%20I64u,%20I64u,", LocationName, TotalExecutionCount, TotalElapsedTime);
 }
 
 _Use_decl_annotations_ static void PerfFinalOutputRoutine(void* OutputContext)
 {
 	UNREFERENCED_PARAMETER(OutputContext);
+}
+
+ULONG64 PerfGetTime()
+{
+	LARGE_INTEGER Counter = KeQueryPerformanceCounter(nullptr);
+	return static_cast<ULONG64>(Counter.QuadPart);
 }

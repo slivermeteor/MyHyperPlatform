@@ -1,4 +1,6 @@
 ﻿#include "VM.h"
+#include <limits.h>
+#include <intrin.h>
 #include "Common.h"
 #include "Util.h"
 #include "Log.h"
@@ -6,6 +8,7 @@
 #include "ASM.h"
 #include "EPT.h"
 #include "VMM.h"
+
 
 EXTERN_C_START
 
@@ -15,6 +18,40 @@ _IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS VmSetLockBitCallback(_In_opt_
 _IRQL_requires_max_(PASSIVE_LEVEL) static SHARED_PROCESSOR_DATA* VmInitializeSharedData();
 _IRQL_requires_max_(PASSIVE_LEVEL) static void* VmBuildMsrBitmap();
 _IRQL_requires_max_(PASSIVE_LEVEL) static PUCHAR VmBuildIoBitmaps();
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static bool VmEnterVmxMode(_Inout_ PROCESSOR_DATA* ProcessorData);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static bool VmSetupVmcs(_In_ const PROCESSOR_DATA* ProcessorData, _In_ ULONG_PTR GuestStackPointer, _In_ ULONG_PTR GuestInstructionPointer, _In_ ULONG_PTR VmmStackPoinetr);
+_IRQL_requires_max_(PASSIVE_LEVEL) static bool VmInitializeVmcs(_Inout_ PROCESSOR_DATA* ProcessorData);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static ULONG VmAdjustControlValue(_In_ MSR Msr, _In_ ULONG RequestedValue);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static ULONG VmGetSegmentAccessRight(_In_ USHORT _SegmentSelector);
+
+// 得到段选择符
+_IRQL_requires_max_(PASSIVE_LEVEL) static SEGMENT_DESCRIPTOR* VmGetSegmentDescriptor(_In_ ULONG_PTR DescriptorTableBase, _In_ USHORT _SegmentSelector);
+_IRQL_requires_max_(PASSIVE_LEVEL) static ULONG_PTR VmGetSegmentBaseByDescriptor(_In_ const SEGMENT_DESCRIPTOR* SegmentDescriptor);
+// 根据段选择符得到基地址
+_IRQL_requires_max_(PASSIVE_LEVEL) static ULONG_PTR VmGetSegmentBase(_In_ ULONG_PTR GdtBase, _In_ USHORT SegmentSelector);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static void VmLaunchVm();
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static void VmFreeProcessorData(_In_opt_ PROCESSOR_DATA* ProcessorData);
+_IRQL_requires_max_(PASSIVE_LEVEL) static void VmFreeSharedData(_In_ PROCESSOR_DATA* ProcessorData);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS VmStartVm(_In_opt_ void* Context);
+_IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS VmStopVm(_In_opt_ void* Context);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) static void VmInitializeVm(_In_ ULONG_PTR GuestInstruction, _In_ ULONG_PTR GuestInstructionPointer, _In_opt_ void *Context);
+
+_IRQL_requires_max_(PASSIVE_LEVEL) bool VmIsHyperPlatformInstalled();
+
+// 自己定义 GetSegmentLimit - x64自带定义
+#if !defined(GetSegmentLimit)
+inline ULONG GetSegmentLimit(_In_ ULONG selector) {
+	return __segmentlimit(selector);
+}
+#endif
 
 //  检查 VMM 是否可以安装 - 检查CPUID标志位
 _Use_decl_annotations_ NTSTATUS VmInitialization()
@@ -159,8 +196,8 @@ _Use_decl_annotations_ static SHARED_PROCESSOR_DATA* VmInitializeSharedData()
 	MYHYPERPLATFORM_LOG_DEBUG("SharedData = %p", SharedData);
 
 	// 启动 MSR bitmap
-	SharedData->msr_bitmap = VmBuildMsrBitmap();
-	if (!SharedData->msr_bitmap)
+	SharedData->MsrBitmap = VmBuildMsrBitmap();
+	if (!SharedData->MsrBitmap)
 	{
 		ExFreePoolWithTag(SharedData, HyperPlatformCommonPoolTag);
 		return nullptr;
@@ -170,13 +207,13 @@ _Use_decl_annotations_ static SHARED_PROCESSOR_DATA* VmInitializeSharedData()
 	const auto IoBitmaps = VmBuildIoBitmaps();
 	if (!IoBitmaps)
 	{
-		ExFreePoolWithTag(SharedData->msr_bitmap, HyperPlatformCommonPoolTag);
+		ExFreePoolWithTag(SharedData->MsrBitmap, HyperPlatformCommonPoolTag);
 		ExFreePoolWithTag(SharedData, HyperPlatformCommonPoolTag);
 		return nullptr;
 	}
 
-	SharedData->io_bitmap_a = IoBitmaps;
-	SharedData->io_bitmap_b = IoBitmaps + PAGE_SIZE;
+	SharedData->IoBitmapA = IoBitmaps;
+	SharedData->IoBitmapB = IoBitmaps + PAGE_SIZE;
 
 	return SharedData;
 }
@@ -246,8 +283,8 @@ _Use_decl_annotations_ static UCHAR* VmBuildIoBitmaps()
 	// 两块map 分别控制两段的访问
 	const auto IoBitmapA = IoBitmaps;
 	const auto IoBitmapB = IoBitmaps + PAGE_SIZE;
-	RtlZeroMemory(IoBitmapA, PAGE_SIZE, 0);
-	RtlZeroMemory(IoBitmapB, PAGE_SIZE, 0);
+	RtlZeroMemory(IoBitmapA, PAGE_SIZE);
+	RtlZeroMemory(IoBitmapB, PAGE_SIZE);
 
 	// 激活 VM-exit 在 0x10 - 0x2010  0x4010 - 0x6010 作为例子
 	RTL_BITMAP BitmapAHeader = { 0 };
@@ -327,13 +364,593 @@ _Use_decl_annotations_ static void VmInitializeVm(ULONG_PTR GuestStackPointer, U
 	// |                  |    v
 	// +------------------+  <- vmm_stack_limit            (eg, AED34000)
 	// (Low)
-
 	ProcessorData->VmcsRegion = reinterpret_cast<VM_CONTROL_STRUCTURE*>(ExAllocatePoolWithTag(NonPagedPool, kVmxMaxVmcsSize, HyperPlatformCommonPoolTag));
+	const auto VmmStackRegionBase = reinterpret_cast<ULONG_PTR>(ProcessorData->VmmStackLimit) + KERNEL_STACK_SIZE;
+	const auto VmmStackData = VmmStackRegionBase - sizeof(void*);
+	const auto VmmStackBase = VmmStackData - sizeof(void*);
 
+	MYHYPERPLATFORM_LOG_DEBUG("VmmStackLimit = \t%p", ProcessorData->VmmStackLimit);
+	MYHYPERPLATFORM_LOG_DEBUG("VmmStackRegionBase = \t%016Ix", VmmStackRegionBase);
+	MYHYPERPLATFORM_LOG_DEBUG("vmm_stack_data = \t%016Ix", VmmStackData);
+	MYHYPERPLATFORM_LOG_DEBUG("vmm_stack_base = \t%016Ix", VmmStackBase);
+	MYHYPERPLATFORM_LOG_DEBUG("processor_data = \t%p stored at %016Ix", ProcessorData, VmmStackData);
+	MYHYPERPLATFORM_LOG_DEBUG("guest_stack_pointer = \t%016Ix", GuestStackPointer);
+	MYHYPERPLATFORM_LOG_DEBUG("guest_inst_pointer = \t%016Ix", GuestInstructionPointer);
 
+	*reinterpret_cast<ULONG_PTR*>(VmmStackBase) = MAXULONG_PTR;
+	*reinterpret_cast<PROCESSOR_DATA**>(VmmStackData) = ProcessorData;
 
+	// 进入 VMX Mode
+	if (!VmEnterVmxMode(ProcessorData))
+		goto RETURN_FALSE;
+
+	// 初始化 VMCS
+	if (!VmInitializeVmcs(ProcessorData))
+		goto RETURN_FALSE;
+
+	// 启动 VMCS
+	if (!VmSetupVmcs(ProcessorData, GuestStackPointer, GuestInstructionPointer, VmmStackBase))
+	{
+		goto RETURN_FALSE_WITH_VMX_OFF;
+	}
+
+	// 开始虚拟化处理器
+	VmLaunchVm();	// 如果正常执行，这个函数不会返回
+
+RETURN_FALSE_WITH_VMX_OFF:
+	__vmx_off();
 RETURN_FALSE:
+	VmFreeProcessorData(ProcessorData);
+}
 
+// 进入 VMX 模式
+_Use_decl_annotations_ static bool VmEnterVmxMode(PROCESSOR_DATA* ProcessorData)
+{
+	PAGED_CODE();
+
+	// 2.5.10 CR0与CR4的固定位 - 进入VMX operation模式要求
+	// CR0				   CR4
+	// IA32_VMX_CRX_FIXED0 IA32_VMX_CRX_FIXED1 四个寄存器用来表示CR0 CR4 对应位的值
+	// 当 FIXED0 寄存器的位为 1 ,CR0 CR4 对应位必须为 1
+	// 当 FIXED1 寄存器的位为 0 ,CR0 CR4 对应位必须为 0
+	// 同时 FIXED0 FIXED1 之间 如果 FIXED1 为 0， FIXED0 必为 1
+	//						   如果 FIXED0 为 1， FIXED1 必为 0
+
+	// 修正CR0
+	const CR0 IA32_VMX_CR0_FIXED0 = { UtilReadMsr(MSR::kIa32VmxCr0Fixed0) };
+	const CR0 IA32_VMX_CR0_FIXED1 = { UtilReadMsr(MSR::kIa32VmxCr0Fixed1) };
+
+	CR0 Cr0 = { __readcr0() };
+	CR0 Cr0Origin = Cr0;
+	Cr0.all &= IA32_VMX_CR0_FIXED1.all;
+	Cr0.all |= IA32_VMX_CR0_FIXED0.all;
+	__writecr0(Cr0.all);
+
+
+	MYHYPERPLATFORM_LOG_DEBUG("IA32_VMX_CR0_FIXED0   = %08Ix", IA32_VMX_CR0_FIXED0.all);
+	MYHYPERPLATFORM_LOG_DEBUG("IA32_VMX_CR0_FIXED1   = %08Ix", IA32_VMX_CR0_FIXED1.all);
+	MYHYPERPLATFORM_LOG_DEBUG("Original CR0          = %08Ix", Cr0Origin.all);
+	MYHYPERPLATFORM_LOG_DEBUG("Fixed CR0             = %08Ix", Cr0.all);
+
+	// 修正CR4
+	const CR4 IA32_VMX_CR4_FIXED0 = { UtilReadMsr(MSR::kIa32VmxCr4Fixed0) };
+	const CR4 IA32_VMX_CR4_FIXED1 = { UtilReadMsr(MSR::kIa32VmxCr4Fixed1) };
+	CR4 Cr4 = { __readcr4() };
+	CR4 Cr4Origin = Cr4;
+	Cr4.all &= IA32_VMX_CR4_FIXED1.all;
+	Cr4.all |= IA32_VMX_CR4_FIXED0.all;
+	__writecr4(Cr4.all);
+
+	MYHYPERPLATFORM_LOG_DEBUG("IA32_VMX_CR4_FIXED0   = %08Ix", IA32_VMX_CR4_FIXED0.all);
+	MYHYPERPLATFORM_LOG_DEBUG("IA32_VMX_CR4_FIXED1   = %08Ix", IA32_VMX_CR4_FIXED1.all);
+	MYHYPERPLATFORM_LOG_DEBUG("Original CR4          = %08Ix", Cr4Origin.all);
+	MYHYPERPLATFORM_LOG_DEBUG("Fixed CR4             = %08Ix", Cr4.all);
+
+	// VMM本身申请VMXON区域 - 从 IA32_VMX_BASIC 得到信息
+	const IA32_VMX_BASIC_MSR Ia32VmxBasicMsr = { UtilReadMsr64(MSR::kIa32VmxBasic) };
+	ProcessorData->VmxonRegion->RevisionIdentifier = Ia32VmxBasicMsr.fields.revision_identifier;
+
+	auto VmxonRegionPhysicalAddr = UtilPaFromVa(ProcessorData->VmxonRegion);
+	if (__vmx_on(&VmxonRegionPhysicalAddr))	// 激活 VMX
+		return false;
+
+	// cache 刷新 EPT 转换缓存
+	// INVVPID
+	// INVEPT
+	UtilInveptGlobal();
+	UtilInvvpidAllContext();
+
+	return true;
+}
+
+// 初始化 VMCS 区域，并加载
+_Use_decl_annotations_ static bool VmInitializeVmcs(PROCESSOR_DATA* ProcessodData)
+{
+	PAGED_CODE();
+
+	// 写入 VMCS revison identifier
+	const IA32_VMX_BASIC_MSR Ia32VmxBasicMsr = { UtilReadMsr64(MSR::kIa32VmxBasic) };
+	ProcessodData->VmcsRegion->RevisionIdentifier = Ia32VmxBasicMsr.fields.revision_identifier;
+	
+	// 初始化 VMCS 区域，并加载
+	auto VmcsRegionPhysicalAddress = UtilPaFromVa(ProcessodData->VmcsRegion);
+	if (__vmx_vmclear(&VmcsRegionPhysicalAddress))
+		return false;
+
+	if (__vmx_vmptrld(&VmcsRegionPhysicalAddress))
+		return false;
+
+	return true;
+}
+
+// 准备并开启一个虚拟机
+_Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorData, ULONG_PTR GuestStackPointer, ULONG_PTR GuestInstructionPointer, ULONG_PTR VmmStackPoinetr)
+{
+	PAGED_CODE();
+
+	// 读取 GDTR LDTR
+	GDTR Gdtr = { 0 };
+	__sgdt(&Gdtr);
+
+	IDTR Idtr = { 0 };
+	__sidt(&Idtr);
+
+	// 读取 VMX 寄存器值 - 判断功能
+	// 是否使用 TRUE MSR 寄存器
+	const auto UseTrueMsrs = IA32_VMX_BASIC_MSR{ UtilReadMsr64(MSR::kIa32VmxBasic) }.fields.vmx_capability_hint; // [55] 字节 - 决定是否使用 TRUE 寄存器
+
+	// 设置 VM-Entry control 字段
+	VMX_VMENTRY_CONTROLS VmEntryctlRequested = { 0 };
+	VmEntryctlRequested.fields.LoadDebugControls = true;
+	VmEntryctlRequested.fields.Ia32eModeGuest = IsX64();
+	VMX_VMENTRY_CONTROLS VmEntryctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTrueEntryCtls : MSR::kIa32VmxEntryCtls, VmEntryctlRequested.all) };
+
+	// 设置 VM-Exit control 字段
+	VMX_VMEXIT_CONTROLS VmExitctlRequested = { 0 };
+	VmExitctlRequested.fields.HostAddressSpaceSize = IsX64();
+	VmExitctlRequested.fields.AcknowledgeInterruptOnExit = true;
+	VMX_VMEXIT_CONTROLS VmExitctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTrueEntryCtls : MSR::kIa32VmxEntryCtls, VmEntryctlRequested.all) };
+
+	// 设置 VM-Execution Control 字段
+	VMX_PINBASED_CONTROLS VmPinctlRequested = { 0 };
+	VMX_PINBASED_CONTROLS VmPinctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTruePinbasedCtls : MSR::kIa32VmxPinbasedCtls, VmPinctlRequested.all) };
+	
+	
+	VMX_PROCESSOR_BASED_CONTROLS VmProcctlRequested = { 0 };
+	VmProcctlRequested.fields.Cr3LoadExiting = true;
+	VmProcctlRequested.fields.MovDrExiting = true;
+	VmProcctlRequested.fields.UseIoBitmap = true;
+	VmProcctlRequested.fields.UseMsrBitmaps = true;
+	VmProcctlRequested.fields.ActivateSecondaryControl = true;
+	VMX_PROCESSOR_BASED_CONTROLS VmProcctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTrueProcBasedCtls : MSR::kIa32VmxProcBasedCtls, VmProcctlRequested.all) };
+
+	
+	VMX_SECONDARY_PROCESSOR_BASED_CONTROLS VmSeconProcctlRequested = { 0 };
+	VmSeconProcctlRequested.fields.EnableEpt = true;
+	VmSeconProcctlRequested.fields.DescriptorTableExiting = true;
+	VmSeconProcctlRequested.fields.EnableRdtscap = true;
+	VmSeconProcctlRequested.fields.EnableVpid = true;
+	VmSeconProcctlRequested.fields.EnableXsavedXstors = true;
+	VMX_SECONDARY_PROCESSOR_BASED_CONTROLS VmSeconProcctl = { VmAdjustControlValue(MSR::kIa32VmxProcBasedCtls2, VmSeconProcctlRequested.all) };
+
+	// 输出设置结果
+	MYHYPERPLATFORM_LOG_DEBUG("VmEntryControls                  = %08x", VmEntryctl.all);
+	MYHYPERPLATFORM_LOG_DEBUG("VmExitControls                   = %08x", VmExitctl.all);
+	MYHYPERPLATFORM_LOG_DEBUG("PinBasedControls                 = %08x", VmPinctl.all);
+	MYHYPERPLATFORM_LOG_DEBUG("ProcessorBasedControls           = %08x", VmProcctl.all);
+	MYHYPERPLATFORM_LOG_DEBUG("SecondaryProcessorBasedControls  = %08x", VmSeconProcctl.all);
+
+	// 
+	const auto ExceptionBitmap = 0;
+
+	// 启动 CR0 和 CR4 bitmaps
+	CR0 Cr0Mask = { 0 };
+	CR0 Cr0Shadow = { __readcr0() };
+
+	CR4 Cr4Mask = { 0 };
+	CR4 Cr4Shadow = { __readcr4() };
+	// 如果我们不想要 guest 知道 CR4.VMXE 情况，就应该注释下面
+	//Cr4Mask.fields.vmxe = true;
+	//Cr4Shadow.fields.vmxe = false;
+
+	// 在 PAE 模式下，进行下列操作的时候是，PDPTE应该重新从CR3加载
+	// mov cr0, x | mov cr4, x | 修改 cr0.cd cr0.nw cr0.pg cr4.pae cr4.pge cr4.pse cr4.smep
+	if (UtilIsX86PAE())
+	{
+		Cr0Mask.fields.pg = true;
+		Cr0Mask.fields.cd = true;
+		Cr0Mask.fields.nw = true;
+
+		Cr4Mask.fields.pae = true;
+		Cr4Mask.fields.pge = true;
+		Cr4Mask.fields.pse = true;
+		Cr4Mask.fields.smep = true;
+	}
+
+	// 初始化标志位 
+	auto Error = VMX_STATUS::kOk;
+
+	// 开始 guest-state 字段 host-state 字段的赋值
+	// 16 bit Control Field
+	Error |= UtilVmWrite(VMCS_FIELD::kVirtualProcessorId, KeGetCurrentProcessorNumberEx(nullptr) + 1);
+
+	// 16 Bit guest-state field
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsSelector, AsmReadES());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsSelector, AsmReadCS());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSsSelector, AsmReadSS());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestDsSelector, AsmReadDS());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsSelector, AsmReadFS());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsSelector, AsmReadGS());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestLdtrSelector, AsmReadLDTR());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestTrSelector, AsmReadTR());
+	
+	// 16 bit host-state field
+	Error |= UtilVmWrite(VMCS_FIELD::kHostEsSelector, AsmReadES() & 0xf8);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostCsSelector, AsmReadCS() & 0xf8);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostSsSelector, AsmReadSS() & 0xf8);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostDsSelector, AsmReadDS() & 0xf8);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostFsSelector, AsmReadFS() & 0xf8);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostGsSelector, AsmReadGS() & 0xf8);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostTrSelector, AsmReadTR() & 0xf8);
+
+	// 64 bit control-field
+	Error |= UtilVmWrite64(VMCS_FIELD::kIoBitmapA, UtilPaFromVa(ProcessorData->SharedData->IoBitmapA));
+	Error |= UtilVmWrite64(VMCS_FIELD::kIoBitmapB, UtilPaFromVa(ProcessorData->SharedData->IoBitmapB));
+	Error |= UtilVmWrite64(VMCS_FIELD::kMsrBitmap, UtilPaFromVa(ProcessorData->SharedData->MsrBitmap));
+	Error |= UtilVmWrite64(VMCS_FIELD::kEptPointer, EptGetEptPointer(ProcessorData->EptData));
+
+	// 64-Bit Guest-State Fields 
+	Error |= UtilVmWrite64(VMCS_FIELD::kVmcsLinkPointer, MAXULONG64);
+	Error |= UtilVmWrite64(VMCS_FIELD::kGuestIa32Debugctl, UtilReadMsr64(MSR::kIa32Debugctl));
+	if (UtilIsX86PAE()) 
+	{
+		UtilLoadPdptes(__readcr3());
+	}
+
+	// 32 bit control fields 
+	Error |= UtilVmWrite(VMCS_FIELD::kPinBasedVmExecControl, VmPinctl.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kCpuBasedVmExecControl, VmProcctl.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kExceptionBitmap, ExceptionBitmap);
+	Error |= UtilVmWrite(VMCS_FIELD::kVmExitControls, VmEntryctl.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kVmEntryControls, VmEntryctl.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kSecondaryVmExecControl, VmSeconProcctl.all);
+
+	// 32 bit guest-state-fields
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsLimit, GetSegmentLimit(AsmReadES()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsLimit, GetSegmentLimit(AsmReadCS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSsLimit, GetSegmentLimit(AsmReadSS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestDsLimit, GetSegmentLimit(AsmReadDS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsLimit, GetSegmentLimit(AsmReadFS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsLimit, GetSegmentLimit(AsmReadGS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestLdtrLimit, GetSegmentLimit(AsmReadLDTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestTrLimit, GetSegmentLimit(AsmReadTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGdtrLimit, Gdtr.Limit);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestIdtrLimit, Idtr.Limit);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsArBytes, VmGetSegmentAccessRight(AsmReadES()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsArBytes, VmGetSegmentAccessRight(AsmReadCS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSsArBytes, VmGetSegmentAccessRight(AsmReadSS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestDsArBytes, VmGetSegmentAccessRight(AsmReadDS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsArBytes, VmGetSegmentAccessRight(AsmReadFS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsArBytes, VmGetSegmentAccessRight(AsmReadGS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestLdtrArBytes, VmGetSegmentAccessRight(AsmReadLDTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestTrArBytes, VmGetSegmentAccessRight(AsmReadTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSysenterCs, UtilReadMsr(MSR::kIa32SysenterCs));
+
+	// 32 bit Host-state field
+	Error |= UtilVmWrite(VMCS_FIELD::kHostIa32SysenterCs, UtilReadMsr(MSR::kIa32SysenterCs));
+
+	// Natural-width control fields
+	Error |= UtilVmWrite(VMCS_FIELD::kCr0GuestHostMask, Cr0Mask.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kCr4GuestHostMask, Cr4Mask.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kCr0ReadShadow, Cr0Shadow.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kCr4ReadShadow, Cr4Shadow.all);
+#if defined(_AMD64_)
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsBase, 0);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsBase, 0);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSsBase, 0);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestDsBase, 0);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsBase, UtilReadMsr(Msr::kIa32FsBase));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsBase, UtilReadMsr(Msr::kIa32GsBase));
+#else
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsBase, VmGetSegmentBase(Gdtr.Base, AsmReadES()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsBase, VmGetSegmentBase(Gdtr.Base, AsmReadCS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSsBase, VmGetSegmentBase(Gdtr.Base, AsmReadSS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestDsBase, VmGetSegmentBase(Gdtr.Base, AsmReadDS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsBase, VmGetSegmentBase(Gdtr.Base, AsmReadFS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsBase, VmGetSegmentBase(Gdtr.Base, AsmReadGS()));
+#endif
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestLdtrBase, VmGetSegmentBase(Gdtr.Base, AsmReadLDTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestTrBase, VmGetSegmentBase(Gdtr.Base, AsmReadTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGdtrBase, Gdtr.Base);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestIdtrBase, Idtr.Base);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestDr7, __readdr(7));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestRsp, GuestStackPointer);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestRip, GuestInstructionPointer);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestRflags, __readeflags());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSysenterEsp, UtilReadMsr(MSR::kIa32SysenterEsp));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestSysenterEip, UtilReadMsr(MSR::kIa32SysenterEip));
+
+	// 自然宽度 Host state field
+	Error |= UtilVmWrite(VMCS_FIELD::kHostCr0, __readcr0());
+	Error |= UtilVmWrite(VMCS_FIELD::kHostCr3, __readcr3());
+	Error |= UtilVmWrite(VMCS_FIELD::kHostCr4, __readcr4());
+#if defined(_AMD64_)
+	Error |= UtilVmWrite(VMCS_FIELD::kHostFsBase, UtilReadMsr(Msr::kIa32FsBase));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostGsBase, UtilReadMsr(Msr::kIa32GsBase));
+#else
+	Error |= UtilVmWrite(VMCS_FIELD::kHostFsBase, VmGetSegmentBase(Gdtr.Base, AsmReadFS()));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostGsBase, VmGetSegmentBase(Gdtr.Base, AsmReadGS()));
+#endif
+	Error |= UtilVmWrite(VMCS_FIELD::kHostTrBase, VmGetSegmentBase(Gdtr.Base, AsmReadTR()));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostGdtrBase, Gdtr.Base);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostIdtrBase, Idtr.Base);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostIa32SysenterEsp, UtilReadMsr(MSR::kIa32SysenterEsp));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostIa32SysenterEip, UtilReadMsr(MSR::kIa32SysenterEip));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostRsp, VmmStackPoinetr);
+	Error |= UtilVmWrite(VMCS_FIELD::kHostRip, reinterpret_cast<ULONG_PTR>(AsmVmmEntryPoint));			// VMM 入口
+
+	const auto VmxStatus = static_cast<VMX_STATUS>(Error);
+	
+	return VmxStatus == VMX_STATUS::kOk;
+}
+
+// 根据对应的寄存器 调整 对应的控制字段
+// VM-entry VM-exit VM-function control 字段有特定的寄存器来决定它们的值。这里就是根据那些寄存器的值来调整
+// 2.5.6/7/8
+_Use_decl_annotations_ static ULONG VmAdjustControlValue(MSR Msr, ULONG RequestedValue)
+{
+	PAGED_CODE();
+
+	LARGE_INTEGER MsrValue = { 0 };
+	MsrValue.QuadPart = UtilReadMsr64(Msr);
+	auto AdjustedValue = RequestedValue;
+
+	// 低32位，允许值0 - 当寄存器为0，控制位为0
+	AdjustedValue &= MsrValue.LowPart;
+	// 高32位，允许值1 - 当寄存器为，控制位为1
+	AdjustedValue |= MsrValue.HighPart;
+
+	return AdjustedValue;
+}
+
+//  得到对应段的访问权限 - 通过VMX的端选择符
+_Use_decl_annotations_ static ULONG VmGetSegmentAccessRight(USHORT _SegmentSelector)
+{
+	PAGED_CODE();
+
+	VMX_REGMENT_DESCRIPTOR_ACCESS_RIGHT AccessRight = { 0 };
+	const SEGMENT_SELECTOR SegmentSelector = { _SegmentSelector };
+
+	if (_SegmentSelector)
+	{
+		auto NativeAccessRight = AsmLoadAccessRightsByte(SegmentSelector.all);
+		NativeAccessRight >>= 8;	// ???
+		AccessRight.all = static_cast<ULONG>(NativeAccessRight);
+		AccessRight.fields.Reserved1 = 0;
+		AccessRight.fields.Reserved2 = 0;
+		AccessRight.fields.Unusable = false;
+	}
+	else
+		AccessRight.fields.Unusable = true;
+
+	return AccessRight.all;
+}
+
+_Use_decl_annotations_ static ULONG_PTR VmGetSegmentBase(ULONG_PTR GdtBase, USHORT _SegmentSelector)
+{
+	PAGED_CODE();
+
+	// 将传入的 段选择符强转类型
+	const SEGMENT_SELECTOR SegmentSelector = { _SegmentSelector };
+	if (!SegmentSelector.all)
+		return 0;
+
+	// 如果有 Table Index - 说明是 IDT 表项
+	if (SegmentSelector.fields.Ti)
+	{
+		// 得到 Local Descriptor Table 所在的 GDT 表项 - 再根据表项得到 IdtBase
+		const auto LocalSegmentDescriptor = VmGetSegmentDescriptor(GdtBase, AsmReadLDTR());
+		const auto IdtBase = VmGetSegmentBaseByDescriptor(LocalSegmentDescriptor);
+
+		// 得到传入的段描述符在 IDT 中的表项 - 再得到基地址
+		const auto SegmentDescriptor = VmGetSegmentDescriptor(IdtBase, _SegmentSelector);
+		return VmGetSegmentBaseByDescriptor(SegmentDescriptor);
+	}
+	else
+	{
+		const auto SegmentDescriptor = VmGetSegmentDescriptor(GdtBase, _SegmentSelector);
+		return VmGetSegmentBaseByDescriptor(SegmentDescriptor);
+	}
+}
+
+// 根据 段选择符 得到 端描述符
+_Use_decl_annotations_ static SEGMENT_DESCRIPTOR* VmGetSegmentDescriptor(ULONG_PTR DescriptorTableBase, USHORT _SegmentSelector)
+{
+	PAGED_CODE();
+
+	const SEGMENT_SELECTOR SegmentSelector = { _SegmentSelector };
+	return reinterpret_cast<SEGMENT_DESCRIPTOR*>(DescriptorTableBase + SegmentSelector.fields.Index * sizeof(SEGMENT_DESCRIPTOR));
+}
+
+// 根据段描述符得到基地址
+_Use_decl_annotations_ static ULONG_PTR VmGetSegmentBaseByDescriptor(const SEGMENT_DESCRIPTOR* SegmentDescriptor)
+{
+	PAGED_CODE();
+
+	// 计算 32 bit 基地址
+	const auto BaseHigh = SegmentDescriptor->fields.BaseHigh << (6 * 4);
+	const auto BaseMiddle = SegmentDescriptor->fields.BaseMid << (4 * 4);
+	const auto BaseLow = SegmentDescriptor->fields.BaseLow;
+	ULONG_PTR Base = (BaseHigh | BaseMiddle | BaseLow) & MAXULONG;
+
+	// 如果需要得到基地址的高 32 bit 
+	if (IsX64() && !SegmentDescriptor->fields.System)
+	{
+		// 转换成 64位 描述符
+		auto Desc64 = reinterpret_cast<const SEGMENT_DESCRIPTOR_X64*>(SegmentDescriptor);
+		ULONG64 BaseUpper32 = Desc64->BaseUpper32;
+		Base |= (BaseUpper32 << 32);  // 得到高地址 向高位移动32位 相或
+	}
+
+	return Base;
+}
+
+// 执行 vmlaunch
+_Use_decl_annotations_ static void VmLaunchVm()
+{
+	PAGED_CODE();
+
+	auto ErrorCode = UtilVmRead(VMCS_FIELD::kVmInstructionError);
+	if (ErrorCode)
+		MYHYPERPLATFORM_LOG_WARN("VM_INSTRUCTION_ERROR = %lu", ErrorCode);
+
+	auto VmxStatus = static_cast<VMX_STATUS>(__vmx_vmlaunch());
+
+	// 如果 __vmx_vmlunch成功执行, eip 应该转向 GuestEip
+	if (VmxStatus == VMX_STATUS::kErrorWithStatus)
+	{
+		ErrorCode = UtilVmRead(VMCS_FIELD::kVmInstructionError);
+		MYHYPERPLATFORM_LOG_ERROR("VM_INSTRUCTION_ERROR = %Iu", ErrorCode);
+	}
+
+	MYHYPERPLATFORM_COMMON_DBG_BREAK();
+}
+
+_Use_decl_annotations_ static void VmFreeProcessorData(PROCESSOR_DATA* ProcessorData)
+{
+	PAGED_CODE();
+
+	if (!ProcessorData)
+		return;
+
+	if (ProcessorData->VmmStackLimit)
+		MmFreeContiguousMemory(ProcessorData->VmmStackLimit);
+
+	if (ProcessorData->VmcsRegion)
+		ExFreePoolWithTag(ProcessorData->VmcsRegion, HyperPlatformCommonPoolTag);
+
+	if (ProcessorData->VmxonRegion)
+		ExFreePoolWithTag(ProcessorData->VmxonRegion, HyperPlatformCommonPoolTag);
+
+	if (ProcessorData->EptData)
+		EptTermination(ProcessorData->EptData);
+
+	VmFreeSharedData(ProcessorData);
+
+	ExFreePoolWithTag(ProcessorData, HyperPlatformCommonPoolTag);
+}
+
+// 当引用计数为0时，释放 共享数据
+_Use_decl_annotations_ static void VmFreeSharedData(PROCESSOR_DATA* ProcessorData)
+{
+	PAGED_CODE();
+
+	if (!ProcessorData->SharedData)
+		return;
+
+	// 如果还有处理器在引用 - 放弃释放
+	if (InterlockedDecrement(&ProcessorData->SharedData->ReferenceCount) != 0)
+		return;
+
+	MYHYPERPLATFORM_LOG_DEBUG("Free shared data...");
+
+	//  IoBitMapB 不释放吗 ?
+	if (ProcessorData->SharedData->IoBitmapA)
+		ExFreePoolWithTag(ProcessorData->SharedData->IoBitmapA, HyperPlatformCommonPoolTag);
+
+	if (ProcessorData->SharedData->MsrBitmap)
+		ExFreePoolWithTag(ProcessorData->SharedData->MsrBitmap, HyperPlatformCommonPoolTag);
+
+	ExFreePoolWithTag(ProcessorData->SharedData, HyperPlatformCommonPoolTag);
+}
+
+_Use_decl_annotations_ static NTSTATUS VmStopVm(void* Context)
+{
+	UNREFERENCED_PARAMETER(Context);
+	PAGED_CODE();
+
+	MYHYPERPLATFORM_LOG_INFO("Terminating VMX for the processor %d.", KeGetCurrentProcessorNumberEx(nullptr));
+
+	// 停止虚拟化
+	PROCESSOR_DATA* ProcessorData = nullptr;
+	auto NtStatus = UtilVmCall(HYPERCALL_NUMBER::kTerminateVmm, &ProcessorData);
+	if (!NT_SUCCESS(NtStatus))
+		return NtStatus;
+
+	// 清空 CR4,VNXE - 因为 已经 vmxoff
+	CR4 Cr4 = { __readcr4() };
+	Cr4.fields.vmxe = false;
+
+	__writecr4(Cr4.all);
+
+	VmFreeProcessorData(ProcessorData);
+	return STATUS_SUCCESS;
+}
+
+// 当热插入一个处理器 - 进行虚拟化
+_Use_decl_annotations_ NTSTATUS VmHotplugCallback(const PROCESSOR_NUMBER& ProcNum)
+{
+	PAGED_CODE();
+
+	// 切入到第一个处理器上 - 得到 SharedData
+	GROUP_AFFINITY Affinity = { 0 };
+	GROUP_AFFINITY PreviousAffinity = { 0 };
+	KeSetSystemGroupAffinityThread(&Affinity, &PreviousAffinity);	// 传空调用 - 切入到0号处理器
+
+	SHARED_PROCESSOR_DATA* ShareData = nullptr;
+	auto NtStatus = UtilVmCall(HYPERCALL_NUMBER::kGetSharedProcessorData, &ShareData);
+
+	KeSetSystemGroupAffinityThread(&Affinity, &PreviousAffinity);	// 为啥再调用一次 ???
+
+	if (!NT_SUCCESS(NtStatus))
+		return NtStatus;
+
+	if (!ShareData)
+		return STATUS_UNSUCCESSFUL;
+
+	// 切换到新的处理器上 - 进行虚拟化
+	Affinity.Group = ProcNum.Group;
+	Affinity.Mask = 1ull << ProcNum.Number;
+	KeSetSystemGroupAffinityThread(&Affinity, &PreviousAffinity);
+
+	NtStatus = VmStartVm(ShareData);
+
+	KeRevertToUserGroupAffinityThread(&PreviousAffinity);	// 切换回来
+	return NtStatus;
+}
+
+// 结束 VM
+_Use_decl_annotations_ void VmTermination()
+{
+	PAGED_CODE();
+
+	MYHYPERPLATFORM_LOG_INFO("Uninstalling VMM.");
+	auto NtStatus = UtilForEachProcessor(VmStopVm, nullptr);
+	if (NT_SUCCESS(NtStatus))
+	{
+		MYHYPERPLATFORM_LOG_INFO("The VMM has been unistalled.");
+	}
+	else
+	{
+		MYHYPERPLATFORM_LOG_INFO("The VMm has not been uninstalled (%08x).", NtStatus);
+	}
+
+	// 判断是否卸载成功
+	NT_ASSERT(!VmIsHyperPlatformInstalled());
+}
+
+_Use_decl_annotations_ static bool VmIsHyperPlatformInstalled()
+{
+	PAGED_CODE();
+
+	int CpuInfo[4] = { 0 };
+	__cpuid(CpuInfo, 1);
+	const CPU_FEATURES_ECX CputFeaturesEcx = { static_cast<ULONG_PTR>(CpuInfo[2]) };
+	if (!CputFeaturesEcx.fields.not_used)
+		return false;
+
+	__cpuid(CpuInfo, HyperVCpuidInterface);
+	return CpuInfo[0] == 'AazZ';
 }
 
 EXTERN_C_END

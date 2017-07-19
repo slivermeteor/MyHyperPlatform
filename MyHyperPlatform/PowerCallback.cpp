@@ -1,6 +1,7 @@
 #include "PowerCallback.h"
 #include "Log.h"
 #include "Common.h"
+#include "VM.h"
 
 
 EXTERN_C_START
@@ -45,7 +46,7 @@ _Use_decl_annotations_ NTSTATUS PowerCallbackInitialization()
 	return NtStatus;
 }
 
-_Use_decl_annotations_ static void PowerCallbackTermination()
+_Use_decl_annotations_ void PowerCallbackTermination()
 {
 	PAGED_CODE();
 

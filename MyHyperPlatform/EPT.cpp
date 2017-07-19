@@ -122,6 +122,12 @@ _Use_decl_annotations_ bool EptIsEptAvailable()
 	return true;
 }
 
+// 返回 EPT Pointer
+_Use_decl_annotations_ ULONG64 EptGetEptPointer(EPT_DATA* EptData)
+{
+	return EptData->EptPointer->all;
+}
+
 // 读取所有的MTRR  -并构造对应的 MTRR_DATA
 _Use_decl_annotations_ void EptInitializeMtrrEntries()
 {
@@ -204,7 +210,7 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 			FixedRange.all = UtilReadMsr64(static_cast<MSR>(FixedMsr));
 			for (auto MemoryType : FixedRange.fields.types)
 			{
-				ULONG Base = k4kBase + offset;
+				ULONG64 Base = k4kBase + offset;
 				offset += k4kManagedSize;
 
 				MtrrEntries[Index].Enabled = true;
@@ -413,6 +419,7 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 	switch (TableLevel)
 	{
 		case 4:
+		{
 			// 构造 PML4T
 			const auto PxeIndex = EptAddressToPxeIndex(PhysicalAddress);
 			const auto EptPm14Entry = &Table[PxeIndex];						// PML4 Entry
@@ -426,10 +433,12 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 				// 对 这一级地址进行赋值
 				EptInitTableEntry(EptPm14Entry, TableLevel, UtilPaFromVa(EptPdpt));
 			}
-			
+
 			// 递归构造下一级
 			return EptConstructTables(reinterpret_cast<EPT_COMMON_ENTRY*>(UtilVaFromPfn(EptPm14Entry->fields.PhysicalAddress)), TableLevel - 1, PhysicalAddress, EptData);
+		}		
 		case 3:
+		{
 			// 构造 PDPT
 			const auto PpeIndex = EptAddressToPpeIndex(PhysicalAddress);
 			const auto EptPdptEntry = &Table[PpeIndex];
@@ -443,7 +452,9 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 			}
 
 			return EptConstructTables(reinterpret_cast<EPT_COMMON_ENTRY*>(UtilVaFromPfn(EptPdptEntry->fields.PhysicalAddress)), TableLevel - 1, PhysicalAddress, EptData);
+		}			
 		case 2:
+		{
 			// 构造 PDT
 			const auto PdeIndex = EptAddressToPdeIndex(PhysicalAddress);
 			const auto EptPdtEntry = &Table[PdeIndex];
@@ -458,7 +469,9 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 			}
 
 			return EptConstructTables(reinterpret_cast<EPT_COMMON_ENTRY*>(UtilVaFromPfn(EptPdtEntry->fields.PhysicalAddress)), TableLevel - 1, PhysicalAddress, EptData);
+		}			
 		case 1:
+		{
 			// 构造 PT
 			const auto PteIndex = EptAddressToPteIndex(PhysicalAddress);
 			const auto EptPtEntry = &Table[PteIndex];
@@ -466,9 +479,12 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 			EptInitTableEntry(EptPtEntry, TableLevel, PhysicalAddress);
 
 			return EptPtEntry;
+		}			
 		default:
+		{
 			MYHYPERPLATFORM_COMMON_DBG_BREAK();
 			return nullptr;
+		}		
 	}
 }
 
@@ -519,7 +535,7 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY * EptAllocateEptEntryFromPreAlloc
 	const auto Count = InterlockedIncrement(&EptData->PreallocatedEntriesCount);
 	if (Count > EptNumberOfPreallocatedEntries)
 	{
-		MYHYPERPLATFORM_COMMON_BUG_CHECK(MyHyperPlatformBugCheck::kExhaustedPreallocatedEntries, Count, reinterpret_cast<ULONG_PTR>(EptData), 0);
+		MYHYPERPLATFORM_COMMON_BUG_CHECK(HYPERPLATFORM_BUG_CHECK::kExhaustedPreallocatedEntries, Count, reinterpret_cast<ULONG_PTR>(EptData), 0);
 	}
 	return EptData->PreallocatedEntries[Count - 1];
 }
@@ -581,7 +597,7 @@ _Use_decl_annotations_ static ULONG64 EptAddressToPteIndex(ULONG64 PhysicalAddre
 // 释放所有没有使用的预申请 Entries 已经使用的靠 EptDestructTables()
 _Use_decl_annotations_ static void EptFreeUnusedPreAllocatedEntries(EPT_COMMON_ENTRY** PreallocatedEntries, long UsedCount)
 {
-	for (auto i = 0ul; i < EptNumberOfPreallocatedEntries; i++)
+	for (auto i = UsedCount; i < EptNumberOfPreallocatedEntries; i++)
 	{
 		if (!PreallocatedEntries[i])
 			break;
@@ -592,6 +608,19 @@ _Use_decl_annotations_ static void EptFreeUnusedPreAllocatedEntries(EPT_COMMON_E
 #pragma warning(pop)
 	}
 	ExFreePoolWithTag(PreallocatedEntries, HyperPlatformCommonPoolTag);
+}
+
+// 释放所有申请的内存
+_Use_decl_annotations_ void EptTermination(EPT_DATA* EptData)
+{
+	MYHYPERPLATFORM_LOG_DEBUG("Used pre-allocated = %2d / %2d", EptData->PreallocatedEntriesCount, EptNumberOfPreallocatedEntries);
+
+	EptFreeUnusedPreAllocatedEntries(EptData->PreallocatedEntries, EptData->PreallocatedEntriesCount);
+
+	EptDestructTables(EptData->EptPm14, 4);
+
+	ExFreePoolWithTag(EptData->EptPointer, HyperPlatformCommonPoolTag);
+	ExFreePoolWithTag(EptData, HyperPlatformCommonPoolTag);
 }
 
 EXTERN_C_END

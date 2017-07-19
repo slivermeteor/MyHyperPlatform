@@ -28,6 +28,28 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTSTATUS UtilInitialization(_In_ PDRIVER_OBJE
 
 _IRQL_requires_max_(PASSIVE_LEVEL) void UtilTermination();
 
+// VMX 指令操作函数 - 将 VMX 的汇编指令封装成函数
+enum class VMX_STATUS : unsigned __int8
+{
+	kOk = 0,
+	kErrorWithStatus,
+	kErrorWithoutStatus
+};
+
+// 提供 VmxStatus 的 |= c=操作符
+constexpr VMX_STATUS operator |= (_In_ VMX_STATUS lhs, _In_ VMX_STATUS rhs)
+{
+	return static_cast<VMX_STATUS>(static_cast<unsigned __int8>(lhs) | static_cast<unsigned __int8>(rhs));
+}
+
+// Available command numbers for VMCALL
+enum class HYPERCALL_NUMBER : unsigned __int32 
+{
+	kTerminateVmm,            //!< Terminates VMM
+	kPingVmm,                 //!< Sends ping to the VMM
+	kGetSharedProcessorData,  //!< Terminates VMM
+};
+
 // 返回物理地址范围
 // @return 永远不会失败
 const PHYSICAL_MEMORY_DESCRIPTOR* UtilGetPhysicalMemoryRanges();
@@ -65,10 +87,43 @@ ULONG64 UtilReadMsr64(_In_ MSR msr);
 void UtilWriteMsr(_In_ MSR msr, _In_ ULONG_PTR Value);
 void UtilWriteMsr64(_In_ MSR msr, _In_ ULONG64 Value);
 
+/// Reads natural-width VMCS
+/// @param field  VMCS-field to read
+/// @return read value
+ULONG_PTR UtilVmRead(_In_ VMCS_FIELD Field);
+
+// 写入 VMCS 区域
+// @param Field 进行写入的 VMCS-Filed 
+// @param FiledValue 写入的值
+// @return 写入结果
+VMX_STATUS UtilVmWrite(_In_ VMCS_FIELD Field, _In_ ULONG_PTR FieldValue);
+
+// 写入 64 bits VMCS 区域
+VMX_STATUS UtilVmWrite64(_In_ VMCS_FIELD Field, _In_ ULONG64 FieldValue);
+
+// 执行 VMCALL - asm层封装
+NTSTATUS UtilVmCall(_In_ HYPERCALL_NUMBER HypercallNumber, _In_opt_ void* Context);
+
+
 // 输出寄存器的值
 // @param AllRegiters 要输出的寄存器
 // @param StackPointer 在调用函数之前的栈地址
 void UtilDumpGpRegisters(_In_ const ALL_REGISTERS* AllRegisters, _In_ ULONG_PTR StackPointer);
+
+
+// 执行 INVEPT 指令，冲刷 EPT Entry 缓存
+// @return INVEPT 指令返回结果
+VMX_STATUS UtilInveptGlobal();
+
+
+// Executes the INVVPID instruction (type 2)
+// @return A result of the INVVPID instruction
+VMX_STATUS UtilInvvpidAllContext();
+
+// 检查当前系统是否是 32位下的 PAE 分页模式
+bool UtilIsX86PAE();
+
+void UtilLoadPdptes(_In_ ULONG_PTR Cr3Value);
 
 EXTERN_C_END
 

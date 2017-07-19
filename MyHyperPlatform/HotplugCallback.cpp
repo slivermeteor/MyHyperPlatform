@@ -1,6 +1,7 @@
 #include "HotplugCallback.h"
 #include "Common.h"
 #include "Log.h"
+#include "VM.h"
 
 
 EXTERN_C_START
@@ -15,7 +16,7 @@ static PROCESSOR_CALLBACK_FUNCTION HotplugCallbackRoutine;
 
 static PVOID g_HC_CallbackHandle = nullptr;
 
-_Use_decl_annotations_ NTSTATUS PowerCallbackInitialization()
+_Use_decl_annotations_ NTSTATUS HotplugCallbackInitialization()
 {
 	PAGED_CODE();
 

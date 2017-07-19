@@ -2,7 +2,7 @@
 
 #include <fltKernel.h>
 
-#define HYPERPLATFORM_PERFCOUNTER_P_JOIN2(x, y) x##y		// question
+#define HYPERPLATFORM_PERFCOUNTER_P_JOIN2(x, y) x##y		// question ??? 
 #define HYPERPLATFORM_PERFCOUNTER_P_JOIN1(x, y) \
 	HYPERPLATFORM_PERFCOUNTER_P_JOIN2(x, y)
 
@@ -14,6 +14,16 @@
 #define HYPERPLATFORM_PERFCOUNTER_P_TO_STRING(n) \
 	HYPERPLATFORM_PERFCOUNTER_P_TO_STRING1(n)
 
+// 创建一个 PerfCounter 实例来计算这段代码运行的时间
+// @param Collector PerfCollector 实例
+// @param QueryTimeRoutine 计算运行时间的函数指针
+// 这个宏不能直接使用，
+// 这个宏创建一个 PerfCounter 实例，命名为 PerfObj_N 。N 是一个连续变化的数字，从0开始递增。传入函数名和源代码行数传入宏。
+// PerfCounter 在自己的构造函数里得到这两个参数。计算执行时间，并将它传入 Collector。
+#define MYHYPERPLATFORM_PERFCOUNTER_MEASURE_TIME(Collector, QueryTimeRoutine)	\
+	const PERF_COUNTER HYPERPLATFORM_PERFCOUNTER_P_JOIN(PerfObj_, __COUNTER__)	\
+		  (Collector), (QueryTimeRoutine),									    \
+		  __FUNCTION__"("HYPERPLATFORM_PERFCOUNTER_P_TO_STRING(__LINE__) ")")
 
 
 class PERF_COLLECTOR

@@ -33,4 +33,10 @@ _IRQL_requires_max_(PASSIVE_LEVEL) void EptInitializeMtrrEntries();
 // 
 _IRQL_requires_max_(PASSIVE_LEVEL) EPT_DATA* EptInitialization();
 
+// 得到 EPTP 指针
+ULONG64 EptGetEptPointer(_In_ EPT_DATA* EptData);
+
+// 销毁 EPT 所有相关结构体
+void EptTermination(_In_ EPT_DATA* EptData);
+
 EXTERN_C_END
