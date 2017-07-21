@@ -111,6 +111,12 @@ ErrorWithCode:
 	ret
 AsmInvept ENDP
 
+; void __stdcall AsmInvalidateInternalCaches();
+AsmInvalidateInternalCaches PROC
+	invd
+	ret
+AsmInvalidateInternalCaches ENDP
+
 ; unsigned char __stdcall AsmInvvpit(_In_ INV_VPID_TYPE InvvpidType, _In_ const INV_VPID_DESCRIPTOR* InvVpidDescriptor);
 AsmInvvpid PROC InvVpidType, InvVpidDescriptor
 	mov ecx, InvVpidType
@@ -132,6 +138,13 @@ ErrorWithCode:
 	ret
 
 AsmInvvpid ENDP	
+
+; void __stdcall AsmWriteCR2(_In_ ULONG_PTR Cr2Value);
+AsmWriteCR2 PROC Cr2Value
+	mov ecx, Cr2Value
+	mov cr2, ecx
+	ret
+AsmWriteCR2 ENDP
 
 ; void __stdcall AsmReadGDT(_Out_ GDTR* Gdtr);
 AsmWriteGDT PROC Gdtr
@@ -207,7 +220,7 @@ AsmLoadAccessRightsByte ENDP
 
 ; void __stdcall AsmVmmEntryPoint();
 AsmVmmEntryPoint PROC
-	pushad	; esp - 4 * 8
+	pushad	; esp - 4 * 8 - 8个标准寄存器放入到栈中
 	mov eax, esp
 
 	; 保存 volatile XMM 寄存器
@@ -248,7 +261,7 @@ AsmVmmEntryPoint PROC
 	jz ExitVm
 
 	popad
-	vmresume
+	vmresume			; !!! 恢复VM运行
 	jmp VmxError
 
 ExitVm:

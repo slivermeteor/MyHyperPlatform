@@ -48,7 +48,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	// 检查系统是否支持
 	if (IsSupportedOS())
 	{
-		// LogTermination();
+		LogTermination();
 		return NtStatus;
 	}
 
@@ -56,7 +56,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	NtStatus = GlobalVariablesInitialization();
 	if (!NT_SUCCESS(NtStatus))
 	{
-		// LogTermination();
+		LogTermination();
 		return NtStatus;
 	}
 

@@ -232,6 +232,9 @@ inline unsigned char __vmx_vmlaunch()
 	return 0;
 }
 
+// 写入 CR2
+void __stdcall AsmWriteCR2(_In_ ULONG_PTR Cr2Value);
+
 // 刷新 EPT 转换缓存 - 执行 INVEPT 指令
 // @param InveptType INVEPT指令执行类型
 // @param INV_EPT_DESCRIPTOR 描述符
@@ -265,5 +268,8 @@ void __stdcall AsmVmmEntryPoint();
 // @param HypercallNumber 一个HypercallNumber
 // @param Context VMCALL 背景文 
 unsigned char __stdcall AsmVmxCall(_In_ ULONG_PTR HypercallNumber, _In_opt_ void* Context);
+
+// 刷新 CPU 内置缓存
+void __stdcall AsmInvalidateInternalCaches();
 
 EXTERN_C_END

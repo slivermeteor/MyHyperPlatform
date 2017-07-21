@@ -95,6 +95,31 @@ union CPU_FEATURES_ECX {
 };
 static_assert(sizeof(CPU_FEATURES_ECX) == 4, "Size check");
 
+// 操作 CRx 寄存器 具体操作类型
+enum class CR_ACCESS_TYPE
+{
+	kMovToCr = 0,
+	kMovFromCr,
+	kClts,
+	kLmsw
+};
+
+// 操作 CRx 寄存器 具体位
+union CR_ACCESS_QUALIFICATION {
+	ULONG_PTR all;
+	struct {
+		ULONG_PTR ControlRegister : 4;   //!< [0:3]
+		ULONG_PTR AccessType : 2;        //!< [4:5]
+		ULONG_PTR LmswOperandType : 1;  //!< [6]
+		ULONG_PTR Reserved1 : 1;          //!< [7]
+		ULONG_PTR GpRegister : 4;        //!< [8:11]
+		ULONG_PTR Reserved2 : 4;          //!< [12:15]
+		ULONG_PTR LmswSourceData : 16;  //!< [16:31]
+		ULONG_PTR Reserved3 : 32;         //!< [32:63]
+	} fields;
+};
+static_assert(sizeof(CR_ACCESS_QUALIFICATION) == 8, "Size check");
+
 /// See: MODEL-SPECIFIC REGISTERS (MSRS)
 enum class MSR : unsigned int {
 	kIa32ApicBase = 0x01B,
@@ -371,6 +396,76 @@ enum class VMCS_FIELD : unsigned __int32 {
 	kHostRsp = 0x00006c14,
 	kHostRip = 0x00006c16
 };
+
+enum class VMX_EXIT_REASON : unsigned __int16 
+{
+	kExceptionOrNmi = 0,
+	kExternalInterrupt = 1,
+	kTripleFault = 2,
+	kInit = 3,
+	kSipi = 4,
+	kIoSmi = 5,
+	kOtherSmi = 6,
+	kPendingInterrupt = 7,
+	kNmiWindow = 8,
+	kTaskSwitch = 9,
+	kCpuid = 10,
+	kGetSec = 11,
+	kHlt = 12,
+	kInvd = 13,
+	kInvlpg = 14,
+	kRdpmc = 15,
+	kRdtsc = 16,
+	kRsm = 17,
+	kVmcall = 18,
+	kVmclear = 19,
+	kVmlaunch = 20,
+	kVmptrld = 21,
+	kVmptrst = 22,
+	kVmread = 23,
+	kVmresume = 24,
+	kVmwrite = 25,
+	kVmoff = 26,
+	kVmon = 27,
+	kCrAccess = 28,
+	kDrAccess = 29,
+	kIoInstruction = 30,
+	kMsrRead = 31,
+	kMsrWrite = 32,
+	kInvalidGuestState = 33,  // See: BASIC VM-ENTRY CHECKS
+	kMsrLoading = 34,
+	kUndefined35 = 35,
+	kMwaitInstruction = 36,
+	kMonitorTrapFlag = 37,
+	kUndefined38 = 38,
+	kMonitorInstruction = 39,
+	kPauseInstruction = 40,
+	kMachineCheck = 41,
+	kUndefined42 = 42,
+	kTprBelowThreshold = 43,
+	kApicAccess = 44,
+	kVirtualizedEoi = 45,
+	kGdtrOrIdtrAccess = 46,
+	kLdtrOrTrAccess = 47,
+	kEptViolation = 48,
+	kEptMisconfig = 49,
+	kInvept = 50,
+	kRdtscp = 51,
+	kVmxPreemptionTime = 52,
+	kInvvpid = 53,
+	kWbinvd = 54,
+	kXsetbv = 55,
+	kApicWrite = 56,
+	kRdrand = 57,
+	kInvpcid = 58,
+	kVmfunc = 59,
+	kUndefined60 = 60,
+	kRdseed = 61,
+	kUndefined62 = 62,
+	kXsaves = 63,
+	kXrstors = 64,
+};
+static_assert(sizeof(VMX_EXIT_REASON) == 2, "Size check");
 
 /// See: ARCHITECTURAL MSRS
 union IA32_FEATURE_CONTROL_MSR
@@ -907,3 +1002,99 @@ struct SEGMENT_DESCRIPTOR_X64
 	ULONG32 Reserved;
 };
 static_assert(sizeof(SEGMENT_DESCRIPTOR_X64) == 16, "Size check");
+
+// See: Format of Exit Reason in Basic VM-Exit Information
+union VM_EXIT_INFORMATION 
+{
+	unsigned int all;
+	struct {
+		VMX_EXIT_REASON reason;                      //!< [0:15]
+		unsigned short reserved1 : 12;             //!< [16:30]
+		unsigned short pending_mtf_vm_exit : 1;    //!< [28]
+		unsigned short vm_exit_from_vmx_root : 1;  //!< [29]
+		unsigned short reserved2 : 1;              //!< [30]
+		unsigned short vm_entry_failure : 1;       //!< [31]
+	} fields;
+};
+static_assert(sizeof(VM_EXIT_INFORMATION) == 4, "Size check");
+
+union VM_EXIT_INTERRUPTION_INFORMATION_FIELD
+{
+	ULONG32 all;
+	struct 
+	{
+		ULONG32 Vector : 8;				//!< [0:7]
+		ULONG32 InterruptionType : 3;	//!< [8:10]
+		ULONG32 ErrorCodeValid : 1;		//!< [11]
+		ULONG32 NmiUnblocking : 1;		//!< [12]
+		ULONG32 Reserved : 18;			//!< [13:30]
+		ULONG32 Valid : 1;				//!< [31]
+	}field;
+};
+static_assert(sizeof(VM_EXIT_INTERRUPTION_INFORMATION_FIELD) == 4, "Size check");
+
+
+/// @copydoc VmEntryInterruptionInformationField
+enum class INTERRUPTION_TYPE 
+{
+	kExternalInterrupt = 0,
+	kReserved = 1,						// Not used for VM-Exit
+	kNonMaskableInterrupt = 2,
+	kHardwareException = 3,
+	kSoftwareInterrupt = 4,            // Not used for VM-Exit
+	kPrivilegedSoftwareException = 5,  // Not used for VM-Exit
+	kSoftwareException = 6,
+	kOtherEvent = 7,				  // Not used for VM-Exit
+};
+
+enum class INTERRUPTION_VECTOR
+{
+	kDivideErrorException = 0,         //!< Error code: None
+	kDebugException = 1,               //!< Error code: None
+	kNmiInterrupt = 2,                 //!< Error code: N/A
+	kBreakpointException = 3,          //!< Error code: None
+	kOverflowException = 4,            //!< Error code: None
+	kBoundRangeExceededException = 5,  //!< Error code: None
+	kInvalidOpcodeException = 6,       //!< Error code: None
+	kDeviceNotAvailableException = 7,  //!< Error code: None
+	kDoubleFaultException = 8,         //!< Error code: Yes
+	kCoprocessorSegmentOverrun = 9,    //!< Error code: None
+	kInvalidTssException = 10,         //!< Error code: Yes
+	kSegmentNotPresent = 11,           //!< Error code: Yes
+	kStackFaultException = 12,         //!< Error code: Yes
+	kGeneralProtectionException = 13,  //!< Error code: Yes
+	kPageFaultException = 14,          //!< Error code: Yes
+	kx87FpuFloatingPointError = 16,    //!< Error code: None
+	kAlignmentCheckException = 17,     //!< Error code: Yes
+	kMachineCheckException = 18,       //!< Error code: None
+	kSimdFloatingPointException = 19,  //!< Error code: None
+	kVirtualizationException = 20,     //!< Error code: None
+};
+
+/// See: Page-Fault Error Code
+union PAGEFAULT_ERROR_CODE 
+{
+	ULONG32 all;
+	struct {
+		ULONG32 present : 1;   //!< [1] 0= NotPresent
+		ULONG32 write : 1;     //!< [2] 0= Read
+		ULONG32 user : 1;      //!< [3] 0= CPL==0
+		ULONG32 reserved : 1;  //!< [4]
+		ULONG32 fetch : 1;     //!< [5]
+	} fields;
+};
+static_assert(sizeof(PAGEFAULT_ERROR_CODE) == 4, "Size check");
+
+union VM_ENTRY_INTERRUPTION_INFORMATION_FIELD
+{
+	ULONG32 all;
+	struct 
+	{
+		ULONG32 Vector : 8;				//!< [0:7]
+		ULONG32 InterruptionType : 3;	//!< [8:10]
+		ULONG32 DeliverErrorType : 1;	//!< [11]
+		ULONG32 Reserved : 18;			//!< [12:30]
+		ULONG32 Valid : 1;				//!< [31]			标示是否有效
+	}fields;
+};
+static_assert(sizeof(VM_ENTRY_INTERRUPTION_INFORMATION_FIELD) == 4, "Size check");

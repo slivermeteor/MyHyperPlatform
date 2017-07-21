@@ -531,6 +531,16 @@ VMX_STATUS UtilInveptGlobal()
 	return static_cast<VMX_STATUS>(AsmInvept(INV_EPT_TYPE::kGlobalInvalidation, &InvEptDescriptor));
 }
 
+// invvpid 指令一共有三种执行模式
+_Use_decl_annotations_ VMX_STATUS UtilInvvpidIndividualAddress(USHORT Vpid, void* Address)
+{
+	INV_VPID_DESCRIPTOR InvVpidDescriptor = { 0 };
+	InvVpidDescriptor.Vpid = Vpid;
+	InvVpidDescriptor.LinearAddress = reinterpret_cast<ULONG64>(Address);
+
+	return static_cast<VMX_STATUS>(AsmInvvpid(INV_VPID_TYPE::kIndividualAddressInvalidation, &InvVpidDescriptor));
+}
+// 第三种 全部刷新
 VMX_STATUS UtilInvvpidAllContext()
 {
 	INV_VPID_DESCRIPTOR InvVpidDescriptor = { 0 };	
@@ -548,9 +558,8 @@ _Use_decl_annotations_ VMX_STATUS UtilVmWrite64(VMCS_FIELD Field, ULONG64 FieldV
 	return UtilVmWrite(Field, FieldValue);
 #else
 	// 当32位机器，操作64位域时。触发 - 这种情况下 每个域有两部分组成
-	// 同时这个域的编号 必定是偶数
 	NT_ASSERT(UtilIsInBounds(Field, VMCS_FIELD::kIoBitmapA, VMCS_FIELD::kHostIa32PerfGlobalCtrlHigh));
-	NT_ASSERT((static_cast<ULONG>(Field) % 2) == 0);
+	NT_ASSERT((static_cast<ULONG>(Field) % 2) == 0);	// 要写入的标号肯定是一个偶数 - 也就是从两个连续域的第一个域开始写
 
 	ULARGE_INTEGER Value64 = { 0 };
 	Value64.QuadPart = FieldValue;
@@ -599,6 +608,24 @@ _Use_decl_annotations_ ULONG_PTR UtilVmRead(VMCS_FIELD Field)
 	return FieldValue;
 }
 
+_Use_decl_annotations_ ULONG64 UtilVmRead64(VMCS_FIELD Field)
+{
+#if defined(_AMD64_)
+	return UtilVmRead(Field);
+#else
+	// 只有 x86 下读取 64 bit 域才需要进行处理
+	// 要连续读取两个 32 bit 自己构造
+	NT_ASSERT(UtilIsInBounds(Field, VMCS_FIELD::kIoBitmapA, VMCS_FIELD::kHostIa32PerfGlobalCtrlHigh));	// 判断这个域是否是一个双 32 bit 的域
+	NT_ASSERT((static_cast<ULONG>(Field) % 2) == 0);													// 要读取肯定是一个偶数 - 也就是从两个连续域的第一个域开始读
+
+	ULARGE_INTEGER Value64 = { 0 };
+	Value64.LowPart = UtilVmRead(Field);
+	Value64.HighPart = UtilVmRead(static_cast<VMCS_FIELD>(static_cast<ULONG>(Field) + 1));
+	
+	return Value64.QuadPart;
+#endif
+}
+
 _Use_decl_annotations_ NTSTATUS UtilVmCall(HYPERCALL_NUMBER HypercallNumber, void* Context)
 {
 	__try
@@ -615,4 +642,5 @@ _Use_decl_annotations_ NTSTATUS UtilVmCall(HYPERCALL_NUMBER HypercallNumber, voi
 		return NtStatus;
 	}
 }
+
 EXTERN_C_END

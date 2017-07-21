@@ -87,10 +87,14 @@ ULONG64 UtilReadMsr64(_In_ MSR msr);
 void UtilWriteMsr(_In_ MSR msr, _In_ ULONG_PTR Value);
 void UtilWriteMsr64(_In_ MSR msr, _In_ ULONG64 Value);
 
-/// Reads natural-width VMCS
-/// @param field  VMCS-field to read
-/// @return read value
+// 读取自适应长度的 VMCS-field 
+// @param Field  VMCS-field to read
+// @return read value
 ULONG_PTR UtilVmRead(_In_ VMCS_FIELD Field);
+
+// 读取定长64位的 VMCS
+// @param Field 读取域
+ULONG64 UtilVmRead64(_In_ VMCS_FIELD Field);
 
 // 写入 VMCS 区域
 // @param Field 进行写入的 VMCS-Filed 
@@ -115,6 +119,9 @@ void UtilDumpGpRegisters(_In_ const ALL_REGISTERS* AllRegisters, _In_ ULONG_PTR 
 // @return INVEPT 指令返回结果
 VMX_STATUS UtilInveptGlobal();
 
+// Executes the INVVPID instruction (type 0)
+// @return A result of the INVVPID instruction
+VMX_STATUS UtilInvvpidIndividualAddress(_In_ USHORT Vpid, _In_ void* Address);
 
 // Executes the INVVPID instruction (type 2)
 // @return A result of the INVVPID instruction

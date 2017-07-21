@@ -44,7 +44,7 @@ _IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS VmStopVm(_In_opt_ void* Conte
 
 _IRQL_requires_max_(PASSIVE_LEVEL) static void VmInitializeVm(_In_ ULONG_PTR GuestInstruction, _In_ ULONG_PTR GuestInstructionPointer, _In_opt_ void *Context);
 
-_IRQL_requires_max_(PASSIVE_LEVEL) bool VmIsHyperPlatformInstalled();
+_IRQL_requires_max_(PASSIVE_LEVEL) static bool VmIsHyperPlatformInstalled();
 
 // 自己定义 GetSegmentLimit - x64自带定义
 #if !defined(GetSegmentLimit)
@@ -188,6 +188,7 @@ _Use_decl_annotations_ static SHARED_PROCESSOR_DATA* VmInitializeSharedData()
 {
 	PAGED_CODE();
 
+	// 申请内存
 	const auto SharedData = reinterpret_cast<SHARED_PROCESSOR_DATA*>(ExAllocatePoolWithTag(NonPagedPool, sizeof(SHARED_PROCESSOR_DATA), HyperPlatformCommonPoolTag));
 	if (!SharedData)
 		return nullptr;
@@ -364,18 +365,18 @@ _Use_decl_annotations_ static void VmInitializeVm(ULONG_PTR GuestStackPointer, U
 	// |                  |    v
 	// +------------------+  <- vmm_stack_limit            (eg, AED34000)
 	// (Low)
-	ProcessorData->VmcsRegion = reinterpret_cast<VM_CONTROL_STRUCTURE*>(ExAllocatePoolWithTag(NonPagedPool, kVmxMaxVmcsSize, HyperPlatformCommonPoolTag));
 	const auto VmmStackRegionBase = reinterpret_cast<ULONG_PTR>(ProcessorData->VmmStackLimit) + KERNEL_STACK_SIZE;
 	const auto VmmStackData = VmmStackRegionBase - sizeof(void*);
 	const auto VmmStackBase = VmmStackData - sizeof(void*);
 
-	MYHYPERPLATFORM_LOG_DEBUG("VmmStackLimit = \t%p", ProcessorData->VmmStackLimit);
-	MYHYPERPLATFORM_LOG_DEBUG("VmmStackRegionBase = \t%016Ix", VmmStackRegionBase);
-	MYHYPERPLATFORM_LOG_DEBUG("vmm_stack_data = \t%016Ix", VmmStackData);
-	MYHYPERPLATFORM_LOG_DEBUG("vmm_stack_base = \t%016Ix", VmmStackBase);
-	MYHYPERPLATFORM_LOG_DEBUG("processor_data = \t%p stored at %016Ix", ProcessorData, VmmStackData);
-	MYHYPERPLATFORM_LOG_DEBUG("guest_stack_pointer = \t%016Ix", GuestStackPointer);
-	MYHYPERPLATFORM_LOG_DEBUG("guest_inst_pointer = \t%016Ix", GuestInstructionPointer);
+	// 输出申请结果 - 查看内存排序是否正确
+	MYHYPERPLATFORM_LOG_DEBUG("VmmStackLimit           = \t%p", ProcessorData->VmmStackLimit);
+	MYHYPERPLATFORM_LOG_DEBUG("VmmStackRegionBase      = \t%016Ix", VmmStackRegionBase);
+	MYHYPERPLATFORM_LOG_DEBUG("VmmStackData            = \t%016Ix", VmmStackData);
+	MYHYPERPLATFORM_LOG_DEBUG("VmmStackBase            = \t%016Ix", VmmStackBase);
+	MYHYPERPLATFORM_LOG_DEBUG("ProcessorData           = \t%p stored at %016Ix", ProcessorData, VmmStackData);
+	MYHYPERPLATFORM_LOG_DEBUG("GuestStackPointer       = \t%016Ix", GuestStackPointer);
+	MYHYPERPLATFORM_LOG_DEBUG("GuestInstructionPointer = \t%016Ix", GuestInstructionPointer);
 
 	*reinterpret_cast<ULONG_PTR*>(VmmStackBase) = MAXULONG_PTR;
 	*reinterpret_cast<PROCESSOR_DATA**>(VmmStackData) = ProcessorData;
@@ -395,8 +396,9 @@ _Use_decl_annotations_ static void VmInitializeVm(ULONG_PTR GuestStackPointer, U
 	}
 
 	// 开始虚拟化处理器
-	VmLaunchVm();	// 如果正常执行，这个函数不会返回
+	VmLaunchVm();	// 如果 VmLaunch 成功，则驱动会进入 VM 中，这个函数也就不会得到返回。
 
+	// 错误处理 - 正确执行不会进入这里
 RETURN_FALSE_WITH_VMX_OFF:
 	__vmx_off();
 RETURN_FALSE:
