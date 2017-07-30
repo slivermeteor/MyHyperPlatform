@@ -39,4 +39,11 @@ ULONG64 EptGetEptPointer(_In_ EPT_DATA* EptData);
 // 销毁 EPT 所有相关结构体
 void EptTermination(_In_ EPT_DATA* EptData);
 
+/// Handles VM-exit triggered by EPT violation
+/// @param ept_data   EptData to get an EPT pointer
+_IRQL_requires_min_(DISPATCH_LEVEL) void EptHandleEptViolation(_In_ EPT_DATA* EptData);
+
+// 得到一个 物理地址 的 EPT Entry
+EPT_COMMON_ENTRY* EptGetEptPtEntry(_In_ EPT_DATA* EptData,_In_ ULONG64 PhysicalAddress);
+
 EXTERN_C_END

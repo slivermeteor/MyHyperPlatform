@@ -99,26 +99,26 @@ _Use_decl_annotations_ NTSTATUS UtilInitializePageTableVariables()
 		if (UtilIsX86PAE())
 		{
 			// EPT页表机制 四个基地址赋值
-			g_UtilPXEBase = UtilPXEBase;
-			g_UtilPPEBase = UtilPPEBase;
+			g_UtilPDEBase = UtilPDEBasePAE;
+			g_UtilPTEBase = UtilPTEBasePAE;
 			// 两个转换地址
-			g_UtilPXIShift = UtilPXIShift;
-			g_UtilPPIShift = UtilPPIShift;
+			g_UtilPDIShift = UtilPDIShiftPAE;
+			g_UtilPTIShift = UtilPTIShiftPAE;
 			// 两个标志位的初始化
-			g_UtilPXIMask = UtilPXIMask;
-			g_UtilPPIMask = UtilPPIMask;
+			g_UtilPDIMask = UtilPDIMaskPAE;
+			g_UtilPTIMask = UtilPTIMaskPAE;
 		}
 		else
 		{
 			// EPT页表机制 四个基地址赋值
-			g_UtilPXEBase = UtilPXEBase;
-			g_UtilPPEBase = UtilPPEBase;
+			g_UtilPDEBase = UtilPDEBase;
+			g_UtilPTEBase = UtilPTEBase;
 			// 两个转换地址
-			g_UtilPXIShift = UtilPXIShift;
-			g_UtilPPIShift = UtilPPIShift;
+			g_UtilPDIShift = UtilPDIShift;
+			g_UtilPTIShift = UtilPTIShift;
 			// 两个标志位的初始化
-			g_UtilPXIMask = UtilPXIMask;
-			g_UtilPPIMask = UtilPPIMask;
+			g_UtilPDIMask = UtilPDIMask;
+			g_UtilPTIMask = UtilPTIMask;
 		}
 
 		return NtStatus;
@@ -302,12 +302,12 @@ _Use_decl_annotations_ static NTSTATUS UtilInitializePhysicalMemoryRanges()
 	{
 		// 物理页面范围
 		const auto BaseAddr = static_cast<ULONG64>(Ranges->Run[i].BasePage) * PAGE_SIZE;
-		MYHYPERPLATFORM_LOG_DEBUG("Physical Memory Ranges: %01611x - %01611x", BaseAddr, BaseAddr + Ranges->Run[i].PageCount * PAGE_SIZE);
-		// 物理页面长度
-		const auto PhysicalMemorySize = static_cast<ULONG64>(Ranges->NumberOfPages) * PAGE_SIZE;
-		MYHYPERPLATFORM_LOG_DEBUG("Physical Memory Total: %llu KB", PhysicalMemorySize / 1024);
+		MYHYPERPLATFORM_LOG_DEBUG("Physical Memory Ranges: %016llx - %016llx", BaseAddr, BaseAddr + Ranges->Run[i].PageCount * PAGE_SIZE);	
 	}
 
+	// 物理页面长度
+	const auto PhysicalMemorySize = static_cast<ULONG64>(Ranges->NumberOfPages) * PAGE_SIZE;
+	MYHYPERPLATFORM_LOG_DEBUG("Physical Memory Total: %llu KB", PhysicalMemorySize / 1024);
 	return STATUS_SUCCESS;
 }
 
@@ -532,6 +532,8 @@ VMX_STATUS UtilInveptGlobal()
 }
 
 // invvpid 指令一共有三种执行模式
+// 阅读 http://blog.csdn.net/omnispace/article/details/61415935 
+// 第一种 刷新指定页的转换缓存
 _Use_decl_annotations_ VMX_STATUS UtilInvvpidIndividualAddress(USHORT Vpid, void* Address)
 {
 	INV_VPID_DESCRIPTOR InvVpidDescriptor = { 0 };
@@ -545,6 +547,14 @@ VMX_STATUS UtilInvvpidAllContext()
 {
 	INV_VPID_DESCRIPTOR InvVpidDescriptor = { 0 };	
 	return static_cast<VMX_STATUS>(AsmInvvpid(INV_VPID_TYPE::kAllContextInvalidation, &InvVpidDescriptor));
+}
+// 第四种
+_Use_decl_annotations_ VMX_STATUS UtilInvvpidSingleContextExceptGlobal(USHORT Vpid)
+{
+	INV_VPID_DESCRIPTOR InvVpidDescriptor = { 0 };
+	InvVpidDescriptor.Vpid = Vpid;
+
+	return static_cast<VMX_STATUS>(AsmInvvpid(INV_VPID_TYPE::kSingleContextInvalidationExceptGlobal, &InvVpidDescriptor));
 }
 
 _Use_decl_annotations_ VMX_STATUS UtilVmWrite(VMCS_FIELD Field, ULONG_PTR FieldValue)

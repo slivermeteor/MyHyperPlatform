@@ -92,7 +92,10 @@ static EPT_COMMON_ENTRY* EptAllocateEptEntryFromPool();
 static void EptInitTableEntry(_In_ EPT_COMMON_ENTRY* Entry, _In_ ULONG TableLevel, _In_ ULONG64 PhysicalAddress);
 
 static void EptFreeUnusedPreAllocatedEntries(_Pre_notnull_ __drv_allocatesMem(Mem) EPT_COMMON_ENTRY** PreallocatedEntries, _In_ long UsedCount);
-			
+
+static bool EptIsDeviceMemory(_In_ ULONG64 PhysicalAddress);
+static EPT_COMMON_ENTRY* EptGetEptPtEntryByLevel(_In_ EPT_COMMON_ENTRY* Table, _In_ ULONG TableLevel, _In_ ULONG64 PhysicalAddress);
+
 #if defined(ALLOC_PRAGMA)
 #pragma alloc_text(PAGE, EptIsEptAvailable)
 #pragma alloc_text(PAGE, EptInitializeMtrrEntries)
@@ -112,10 +115,10 @@ _Use_decl_annotations_ bool EptIsEptAvailable()
 	// 
 
 	IA32_VMX_EPT_VPID_CAP Ia32VmxEptVpidCap = { UtilReadMsr64(MSR::kIa32VmxEptVpidCap) };
-	if (!Ia32VmxEptVpidCap.fields.support_page_walk_length4			 || !Ia32VmxEptVpidCap.fields.support_write_back_memory_type ||
-		!Ia32VmxEptVpidCap.fields.support_invept				     || !Ia32VmxEptVpidCap.fields.support_single_context_invept  ||
-		!Ia32VmxEptVpidCap.fields.support_all_context_invept		 || !Ia32VmxEptVpidCap.fields.support_invvpid			     ||
-		!Ia32VmxEptVpidCap.fields.support_individual_address_invvpid || !Ia32VmxEptVpidCap.fields.support_single_context_invept  ||
+	if (!Ia32VmxEptVpidCap.fields.support_page_walk_length4			 || !Ia32VmxEptVpidCap.fields.support_write_back_memory_type  ||
+		!Ia32VmxEptVpidCap.fields.support_invept				     || !Ia32VmxEptVpidCap.fields.support_single_context_invept   ||
+		!Ia32VmxEptVpidCap.fields.support_all_context_invept		 || !Ia32VmxEptVpidCap.fields.support_invvpid			      ||
+		!Ia32VmxEptVpidCap.fields.support_individual_address_invvpid || !Ia32VmxEptVpidCap.fields.support_single_context_invvpid  ||
 		!Ia32VmxEptVpidCap.fields.support_all_context_invvpid		 || !Ia32VmxEptVpidCap.fields.support_single_context_retaining_globals_invvpid)	
 		return false;
 	
@@ -138,19 +141,19 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 
 	// 读取和存储默认的内存类型
 	IA32_MTRR_DEFAULT_TYPE_MSR Ia32MtrrDefaultTypeMsr = { UtilReadMsr64(MSR::kIa32MtrrDefType) };
-	g_EptMtrrDefaultType = Ia32MtrrDefaultTypeMsr.fields.default_mtemory_type;
+	g_EptMtrrDefaultType = Ia32MtrrDefaultTypeMsr.fields.DefaultMemoryType;
 
 	// 读取 MTRR 能力
 	IA32_MTRR_CAPABILITIES_MSR Ia32MtrrCapabilitiesMsr = { UtilReadMsr64(MSR::kIa32MtrrCap) };
 	MYHYPERPLATFORM_LOG_DEBUG(
 		"MTRR Default=%lld, VariableCount=%lld, FixedSupported=%lld, FixedEnabled=%lld",
-		Ia32MtrrDefaultTypeMsr.fields.default_mtemory_type,
+		Ia32MtrrDefaultTypeMsr.fields.DefaultMemoryType,
 		Ia32MtrrCapabilitiesMsr.fields.variable_range_count,
 		Ia32MtrrCapabilitiesMsr.fields.fixed_range_supported,
-		Ia32MtrrDefaultTypeMsr.fields.fixed_mtrrs_enabled);
+		Ia32MtrrDefaultTypeMsr.fields.FixedMtrrsEnabled);
 
 	// 读取 FIXED MTRR - 构造对应的 MTRR_ENTRIES
-	if (Ia32MtrrCapabilitiesMsr.fields.fixed_range_supported && Ia32MtrrDefaultTypeMsr.fields.fixed_mtrrs_enabled)
+	if (Ia32MtrrCapabilitiesMsr.fields.fixed_range_supported && Ia32MtrrDefaultTypeMsr.fields.FixedMtrrsEnabled)
 	{
 		static const auto k64kBase = 0x0;
 		static const auto k64kManagedSize = 0x10000;
@@ -304,7 +307,7 @@ _Use_decl_annotations_ EPT_DATA* EptInitialization()
 			{
 				EptDestructTables(EptPm14, 4);
 				ExFreePoolWithTag(EptPointer, HyperPlatformCommonPoolTag);
-				ExFreePoolWithTag(EptPointer, HyperPlatformCommonPoolTag);
+				ExFreePoolWithTag(EptData, HyperPlatformCommonPoolTag);
 				return nullptr;
 			}
 		}
@@ -316,7 +319,7 @@ _Use_decl_annotations_ EPT_DATA* EptInitialization()
 	{
 		EptDestructTables(EptPm14, 4);
 		ExFreePoolWithTag(EptPointer, HyperPlatformCommonPoolTag);
-		ExFreePoolWithTag(EptPointer, HyperPlatformCommonPoolTag);
+		ExFreePoolWithTag(EptData, HyperPlatformCommonPoolTag);
 
 		return nullptr;
 	}
@@ -413,7 +416,7 @@ _Use_decl_annotations_ static MEMORY_TYPE EptGetMemoryType(ULONG64 PhysicalAddre
 	return static_cast<MEMORY_TYPE>(ResultType);
 }
 
-// 申请和初始化一块页表的所有 EPT Entryies - 被多次调用
+// 申请和初始化一块页表的所有 EPT Entryies - 递归构造
 _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_ENTRY* Table, ULONG TableLevel, ULONG64 PhysicalAddress, EPT_DATA* EptData)
 {
 	switch (TableLevel)
@@ -445,7 +448,7 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 			if (!EptPdptEntry->all)
 			{
 				const auto EptPdt = EptAllocateEptEntry(EptData);
-				if (!EptData)
+				if (!EptPdt)
 					return nullptr;
 
 				EptInitTableEntry(EptPdptEntry, TableLevel, UtilPaFromVa(EptPdt));
@@ -475,7 +478,7 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY* EptConstructTables(EPT_COMMON_EN
 			// 构造 PT
 			const auto PteIndex = EptAddressToPteIndex(PhysicalAddress);
 			const auto EptPtEntry = &Table[PteIndex];
-			NT_ASSERT(!EptPtEntry->all);		// PT 必须已经申请了内存
+			NT_ASSERT(!EptPtEntry->all);		// PTE 必须已经申请了内存
 			EptInitTableEntry(EptPtEntry, TableLevel, PhysicalAddress);
 
 			return EptPtEntry;
@@ -541,7 +544,7 @@ _Use_decl_annotations_ static EPT_COMMON_ENTRY * EptAllocateEptEntryFromPreAlloc
 }
 
 // 申请一个新的 EPT_COMMON_ENTRY
-_Use_decl_annotations_ static EPT_COMMON_ENTRY * EptAllocateEptEntryFromPool()
+_Use_decl_annotations_ static EPT_COMMON_ENTRY* EptAllocateEptEntryFromPool()
 {
 	static const auto AllocSize = 512 * sizeof(EPT_COMMON_ENTRY);
 	static_assert(AllocSize == PAGE_SIZE, "Size Check");
@@ -621,6 +624,110 @@ _Use_decl_annotations_ void EptTermination(EPT_DATA* EptData)
 
 	ExFreePoolWithTag(EptData->EptPointer, HyperPlatformCommonPoolTag);
 	ExFreePoolWithTag(EptData, HyperPlatformCommonPoolTag);
+}
+
+// 处理 EPT volation - VM-exit
+_Use_decl_annotations_ void EptHandleEptViolation(EPT_DATA* EptData)
+{
+	const EPT_VIOLATION_QUALIFICATION ExitQualification = { UtilVmRead(VMCS_FIELD::kExitQualification) };
+
+	const auto FaultPa = UtilVmRead64(VMCS_FIELD::kGuestPhysicalAddress);
+	const auto FaultVa = reinterpret_cast<void*>(ExitQualification.fields.ValidGuestLinearAddress ? UtilVmRead(VMCS_FIELD::kGuestLinearAddress) : 0);
+
+	if (ExitQualification.fields.EptReadable || ExitQualification.fields.EptWriteable || ExitQualification.fields.EptExecutable)
+	{
+		MYHYPERPLATFORM_COMMON_DBG_BREAK();
+		MYHYPERPLATFORM_LOG_ERROR_SAFE("[UNK1] VA = %p, PA = %016llx", FaultVa, FaultPa);
+		return;
+	}
+
+	const auto EptEntry = EptGetEptPtEntry(EptData, FaultPa);
+	if (EptEntry && EptEntry->all)
+	{
+		MYHYPERPLATFORM_COMMON_DBG_BREAK();
+		MYHYPERPLATFORM_LOG_ERROR_SAFE("[UNK2] VA = %p, PA = %016llx", FaultVa, FaultPa);
+		return;
+	}
+
+	// 没有得到 EptEntry， 肯定是 Device Memory
+	MYHYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
+	if (!IsReleaseBuild())
+		NT_VERIFY(EptIsDeviceMemory(FaultPa));
+
+	EptConstructTables(EptData->EptPm14, 4, FaultPa, EptData);
+
+	UtilInveptGlobal();
+}
+
+// 根据给定的物理地址，返回 EPTEntry
+_Use_decl_annotations_ EPT_COMMON_ENTRY* EptGetEptPtEntry(EPT_DATA* EptData, ULONG64 PhysicalAddress)
+{
+	return EptGetEptPtEntryByLevel(EptData->EptPm14, 4, PhysicalAddress);
+}
+
+_Use_decl_annotations_ static EPT_COMMON_ENTRY* EptGetEptPtEntryByLevel(EPT_COMMON_ENTRY* Table, ULONG TableLevel, ULONG64 PhysicalAddress)
+{
+	if (!Table)
+		return nullptr;
+
+	switch (TableLevel)
+	{
+		case 4:
+		{
+			// PML4
+			const auto PxeIndex = EptAddressToPxeIndex(PhysicalAddress);
+			const auto EptPml4Entry = &Table[PxeIndex];
+			if (!EptPml4Entry->all)
+				return nullptr;
+
+			return EptGetEptPtEntryByLevel(reinterpret_cast<EPT_COMMON_ENTRY*>(UtilVaFromPfn(EptPml4Entry->fields.PhysicalAddress)), TableLevel - 1, PhysicalAddress);
+		}
+		case 3:
+		{
+			// PDPT
+			const auto PpeIndex = EptAddressToPpeIndex(PhysicalAddress);
+			const auto EptPdptEntry = &Table[PpeIndex];
+			if (!EptPdptEntry->all) 
+				return nullptr;
+			
+			return EptGetEptPtEntryByLevel(reinterpret_cast<EPT_COMMON_ENTRY*>(UtilVaFromPfn(EptPdptEntry->fields.PhysicalAddress)), TableLevel - 1, PhysicalAddress);
+		}
+		case 2:
+		{
+			// PDT
+			const auto PdeIndex = EptAddressToPdeIndex(PhysicalAddress);
+			const auto EptPdtEntry = &Table[PdeIndex];
+			if (!EptPdtEntry->all)
+				return nullptr;
+			
+			return EptGetEptPtEntryByLevel(reinterpret_cast<EPT_COMMON_ENTRY*>(UtilVaFromPfn(EptPdtEntry->fields.PhysicalAddress)), TableLevel - 1, PhysicalAddress);
+		}
+		case 1:
+		{
+			const auto PteIndex = EptAddressToPteIndex(PhysicalAddress);
+			const auto EptPtEntry = &Table[PteIndex];
+			return EptPtEntry;
+		}
+		default:
+			MYHYPERPLATFORM_COMMON_DBG_BREAK();
+			return nullptr;
+	}
+}
+
+// 判断一个物理地址是否是设备内存 (which could not have a corresponding PFN entry)
+_Use_decl_annotations_ static bool EptIsDeviceMemory(ULONG64 PhysicalAddress) 
+{
+	const auto PhysicalAddrRanges = UtilGetPhysicalMemoryRanges();
+	for (auto i = 0ul; i < PhysicalAddrRanges->NumberOfRuns; ++i) 
+	{
+		const auto CurrentRun = &PhysicalAddrRanges->Run[i];
+		const auto BaseAddr = static_cast<ULONG64>(CurrentRun->BasePage) * PAGE_SIZE;
+		const auto EndAddr = BaseAddr + CurrentRun->PageCount * PAGE_SIZE - 1;
+
+		if (UtilIsInBounds(PhysicalAddress, BaseAddr, EndAddr))
+			return false;	
+	}
+	return true;
 }
 
 EXTERN_C_END

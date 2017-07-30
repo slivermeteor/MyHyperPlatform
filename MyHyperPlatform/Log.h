@@ -78,6 +78,9 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTSTATUS LogInitialization(_In_ ULONG Flag, _
 // 结束Log系统。由UnloadDriver呼叫,或者错误处理。
 _IRQL_requires_max_(PASSIVE_LEVEL) void LogTermination();
 
+// 注册 LogReinitialiaRoutine
+_IRQL_requires_max_(PASSIVE_LEVEL) void LogRegisterReinitialization(_In_ PDRIVER_OBJECT DriverObject);
+
 
 EXTERN_C_END
 

@@ -120,17 +120,17 @@ static const auto UtilPPIMask = 0;
 
 
 // Base addresses of page structures. Use !pte to obtain them.
-static const auto kUtilpPdeBasePae = 0xc0600000;
-static const auto kUtilpPteBasePae = 0xc0000000;
+static const auto UtilPDEBasePAE = 0xc0600000;
+static const auto UtilPTEBasePAE = 0xc0000000;
 
 // Get the highest 11 bits
-static const auto kUtilpPdiShiftPae = 21;
+static const auto UtilPDIShiftPAE = 21;
 
 // Get the highest 20 bits
-static const auto kUtilpPtiShiftPae = 12;
+static const auto UtilPTIShiftPAE = 12;
 
 // Use 11 bits; 0b0000_0000_0000_0000_0000_0000_0111_1111_1111
-static const auto kUtilpPdiMaskPae = 0x7ff;
+static const auto UtilPDIMaskPAE = 0x7ff;
 
 // Use 20 bits; 0b0000_0000_0000_0000_1111_1111_1111_1111_1111
-static const auto kUtilpPtiMaskPae = 0xfffff;
+static const auto UtilPTIMaskPAE = 0xfffff;

@@ -19,6 +19,12 @@ ULONG_PTR __stdcall AsmLoadAccessRightsByte(_In_ ULONG_PTR SegmentSelector);
 void __stdcall AsmReadGDT(_Out_ GDTR* Gdtr);
 void __stdcall AsmWriteGDT(_In_ GDTR* Gdtr);
 
+// 读取 SGDT
+inline void __lgdt(_In_ void* gdtr)
+{
+	AsmWriteGDT(static_cast<GDTR*>(gdtr));
+}
+
 
 //  激活处理器VMX模式
 // @param VmsSupportPhysicalAddress  64位的 VMXON 区域地址

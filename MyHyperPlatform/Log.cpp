@@ -35,7 +35,7 @@ typedef struct _LOG_BUFFER_INFO_
 	volatile bool BufferFlushThreadStarted;
 
 	HANDLE	BufferFlushThreadHandle;
-	wchar_t LogFilePath[20];
+	wchar_t LogFilePath[100];
 }LOG_BUFFER_INFO, *PLOG_BUFFER_INFO;
 
 //
@@ -81,8 +81,21 @@ static NTSTATUS LogBufferMessage(_In_z_ const char* Message,_Inout_ LOG_BUFFER_I
 _IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogInitializeLogFile(_Inout_ LOG_BUFFER_INFO* LogBufferInfo); 
 
 static KSTART_ROUTINE LogBufferFlushThreadRoutine;
+static DRIVER_REINITIALIZE LogReinitializationRoutine;
 
 _IRQL_requires_max_(PASSIVE_LEVEL) static NTSTATUS LogSleep(_In_ LONG Millsecond);
+
+#if defined(ALLOC_PRAGMA)
+#pragma alloc_text(INIT, LogInitialization)
+#pragma alloc_text(INIT, LogInitializeBufferInfo)
+//#pragma alloc_text(INIT, LogRegisterReinitialization)
+
+#pragma alloc_text(PAGE, LogInitializeLogFile)
+#pragma alloc_text(PAGE, LogTermination)
+#pragma alloc_text(PAGE, LogFinalizeBufferInfo)
+#pragma alloc_text(PAGE, LogSleep)
+#pragma alloc_text(PAGE, LogBufferFlushThreadRoutine)
+#endif
 
 ////////////////////////////////////////////////////////////////
 // 函数实现
@@ -326,7 +339,7 @@ _Use_decl_annotations_ static NTSTATUS LogMakePrefix(ULONG Level, const char* Fu
 	char ProcessorNumberBuffer[10] = { 0 };
 	if ((g_LogDebugFlag & LogOptDisableProcessorNumber) == 0)
 	{
-		NtStatus = RtlStringCchPrintfA(ProcessorNumberBuffer, RTL_NUMBER_OF(ProcessorNumberBuffer), "#&lu\t", KeGetCurrentProcessorNumberEx(nullptr));
+		NtStatus = RtlStringCchPrintfA(ProcessorNumberBuffer, RTL_NUMBER_OF(ProcessorNumberBuffer), "#%lu\t", KeGetCurrentProcessorNumberEx(nullptr));
 		if (!NT_SUCCESS(NtStatus))
 			return NtStatus;
 	}
@@ -632,7 +645,7 @@ _Use_decl_annotations_ static NTSTATUS LogSleep(LONG Millsecond)
 	PAGED_CODE();
 
 	LARGE_INTEGER LargeInteger = { 0 };
-	LargeInteger.QuadPart = -(1000011 * Millsecond);
+	LargeInteger.QuadPart = -(10000ll * Millsecond);	// 10000 LL(两个小写l)
 	return KeDelayExecutionThread(KernelMode, FALSE, &LargeInteger);
 }
 
@@ -645,7 +658,7 @@ _Use_decl_annotations_ static VOID LogBufferFlushThreadRoutine(void* StartContex
 	auto LogBufferInfo = reinterpret_cast<LOG_BUFFER_INFO*>(StartContext);
 	LogBufferInfo->BufferFlushThreadStarted = true;				// 通知 LogInitializeLogFile ，刷新线程启动完成
 
-	MYHYPERPLATFORM_LOG_DEBUG("Log thread started (TID = %p).", PsGetCurrentThread());
+	MYHYPERPLATFORM_LOG_DEBUG("Log thread started (TID = %p).", PsGetCurrentThreadId());
 
 	while (LogBufferInfo->BufferFlushThreadShouldBeAlive)
 	{
@@ -668,10 +681,36 @@ _Use_decl_annotations_ void LogTermination()
 {
 	PAGED_CODE();
 	MYHYPERPLATFORM_LOG_DEBUG("Finalizing... (Max log usage = %Iu/%lu bytes)", g_LogBufferInfo.LogMaxUsage, LogBufferSize);
-	MYHYPERPLATFORM_LOG_INFO("Say bye!");
+	MYHYPERPLATFORM_LOG_INFO("Log termination.");
 
 	g_LogDebugFlag = LogPutLevelDisable;	// 修改全局标志 - 不再输出任何Log消息
 	LogFinalizeBufferInfo(&g_LogBufferInfo);
+}
+
+_Use_decl_annotations_ void LogRegisterReinitialization(PDRIVER_OBJECT DriverObject)
+{
+	PAGED_CODE();
+
+	IoRegisterBootDriverReinitialization(DriverObject, LogReinitializationRoutine, &g_LogBufferInfo);
+	MYHYPERPLATFORM_LOG_INFO("The log file will be activated later.");
+}
+
+_Use_decl_annotations_ void static LogReinitializationRoutine(DRIVER_OBJECT* DriverObject, PVOID Context, ULONG Count)
+{
+	PAGED_CODE();
+
+	UNREFERENCED_PARAMETER(DriverObject);
+	UNREFERENCED_PARAMETER(Count);
+
+	NT_ASSERT(Context);
+
+	auto LogBufferInfo = reinterpret_cast<LOG_BUFFER_INFO*>(Context);
+	auto NtStatus = LogInitializeLogFile(LogBufferInfo);
+	NT_ASSERT(NT_SUCCESS(NtStatus));
+
+	if (NT_SUCCESS(NtStatus))
+		MYHYPERPLATFORM_LOG_INFO("The log file has been activated.");
+
 }
 
 EXTERN_C_END

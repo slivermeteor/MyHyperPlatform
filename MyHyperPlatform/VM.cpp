@@ -9,7 +9,6 @@
 #include "EPT.h"
 #include "VMM.h"
 
-
 EXTERN_C_START
 
 _IRQL_requires_max_(PASSIVE_LEVEL) static bool VmIsMyHyperPlatformIsInstalled();
@@ -52,6 +51,35 @@ inline ULONG GetSegmentLimit(_In_ ULONG selector) {
 	return __segmentlimit(selector);
 }
 #endif
+
+#if defined(ALLOC_PRAGMA)
+#pragma alloc_text(PAGE, VmInitialization)
+#pragma alloc_text(PAGE, VmTermination)
+#pragma alloc_text(PAGE, VmIsVmxAvailable)
+#pragma alloc_text(PAGE, VmSetLockBitCallback)
+#pragma alloc_text(PAGE, VmInitializeSharedData)
+#pragma alloc_text(PAGE, VmBuildMsrBitmap)
+#pragma alloc_text(PAGE, VmBuildIoBitmaps)
+#pragma alloc_text(PAGE, VmStartVm)
+#pragma alloc_text(PAGE, VmInitializeVm)
+#pragma alloc_text(PAGE, VmEnterVmxMode)
+#pragma alloc_text(PAGE, VmInitializeVmcs)
+#pragma alloc_text(PAGE, VmSetupVmcs)
+#pragma alloc_text(PAGE, VmLaunchVm)
+#pragma alloc_text(PAGE, VmGetSegmentAccessRight)
+#pragma alloc_text(PAGE, VmGetSegmentBase)
+#pragma alloc_text(PAGE, VmGetSegmentDescriptor)
+#pragma alloc_text(PAGE, VmGetSegmentBaseByDescriptor)
+#pragma alloc_text(PAGE, VmAdjustControlValue)
+#pragma alloc_text(PAGE, VmStopVm)
+#pragma alloc_text(PAGE, VmFreeProcessorData)
+#pragma alloc_text(PAGE, VmFreeSharedData)
+#pragma alloc_text(PAGE, VmIsHyperPlatformInstalled)
+#pragma alloc_text(PAGE, VmHotplugCallback)
+#endif
+
+//////////////////////////////////////////////////////////////////////////
+//	函数实现
 
 //  检查 VMM 是否可以安装 - 检查CPUID标志位
 _Use_decl_annotations_ NTSTATUS VmInitialization()
@@ -194,7 +222,7 @@ _Use_decl_annotations_ static SHARED_PROCESSOR_DATA* VmInitializeSharedData()
 		return nullptr;
 
 	RtlZeroMemory(SharedData, sizeof(SHARED_PROCESSOR_DATA));
-	MYHYPERPLATFORM_LOG_DEBUG("SharedData = %p", SharedData);
+	MYHYPERPLATFORM_LOG_DEBUG("SharedData		= %p", SharedData);
 
 	// 启动 MSR bitmap
 	SharedData->MsrBitmap = VmBuildMsrBitmap();
@@ -282,19 +310,19 @@ _Use_decl_annotations_ static UCHAR* VmBuildIoBitmaps()
 		return nullptr;
 
 	// 两块map 分别控制两段的访问
-	const auto IoBitmapA = IoBitmaps;
-	const auto IoBitmapB = IoBitmaps + PAGE_SIZE;
+	const auto IoBitmapA = IoBitmaps;					// 0x0    - 0x7fff
+	const auto IoBitmapB = IoBitmaps + PAGE_SIZE;	    // 0x8000 - 0xffff
 	RtlZeroMemory(IoBitmapA, PAGE_SIZE);
 	RtlZeroMemory(IoBitmapB, PAGE_SIZE);
 
 	// 激活 VM-exit 在 0x10 - 0x2010  0x4010 - 0x6010 作为例子
 	RTL_BITMAP BitmapAHeader = { 0 };
 	RtlInitializeBitMap(&BitmapAHeader, reinterpret_cast<PULONG>(IoBitmapA), PAGE_SIZE * CHAR_BIT);
-	RtlSetBits(&BitmapAHeader, 0x10, 0x2000);
+	//RtlSetBits(&BitmapAHeader, 0x10, 0x2000);
 
 	RTL_BITMAP BitmapBHeader = { 0 };
 	RtlInitializeBitMap(&BitmapBHeader, reinterpret_cast<PULONG>(IoBitmapB), PAGE_SIZE * CHAR_BIT);
-	RtlSetBits(&BitmapBHeader, 0x10, 0x2000);
+	//RtlSetBits(&BitmapBHeader, 0x10, 0x2000);
 
 	return IoBitmaps;
 }
@@ -307,6 +335,7 @@ _Use_decl_annotations_ static NTSTATUS VmStartVm(void* Context)
 
 	MYHYPERPLATFORM_LOG_INFO("Initializing VMX for the processor %d.", KeGetCurrentProcessorNumberEx(nullptr));
 	const auto Ret = AsmInitializeVm(VmInitializeVm, Context);
+	NT_ASSERT(VmIsHyperPlatformInstalled() == Ret);
 
 	if (!Ret)
 		return STATUS_UNSUCCESSFUL;
@@ -316,6 +345,8 @@ _Use_decl_annotations_ static NTSTATUS VmStartVm(void* Context)
 }
 
 // 申请虚拟化结构体，初始化VMCS区域并且虚拟化当前处理器
+// @param GuestStackPointer	VM的栈区
+// @param GuestInstructionPointer VM代码的首地址
 _Use_decl_annotations_ static void VmInitializeVm(ULONG_PTR GuestStackPointer, ULONG_PTR GuestInstructionPointer, void* Context)
 {
 	PAGED_CODE();
@@ -511,14 +542,14 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	VMX_VMEXIT_CONTROLS VmExitctlRequested = { 0 };
 	VmExitctlRequested.fields.HostAddressSpaceSize = IsX64();
 	VmExitctlRequested.fields.AcknowledgeInterruptOnExit = true;
-	VMX_VMEXIT_CONTROLS VmExitctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTrueEntryCtls : MSR::kIa32VmxEntryCtls, VmEntryctlRequested.all) };
+	VMX_VMEXIT_CONTROLS VmExitctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTrueExitCtls : MSR::kIa32VmxExitCtls, VmExitctlRequested.all) };
 
 	// 设置 VM-Execution Control 字段
-	VMX_PINBASED_CONTROLS VmPinctlRequested = { 0 };
+	VMX_PINBASED_CONTROLS VmPinctlRequested = {  };
 	VMX_PINBASED_CONTROLS VmPinctl = { VmAdjustControlValue((UseTrueMsrs) ? MSR::kIa32VmxTruePinbasedCtls : MSR::kIa32VmxPinbasedCtls, VmPinctlRequested.all) };
 	
 	
-	VMX_PROCESSOR_BASED_CONTROLS VmProcctlRequested = { 0 };
+	VMX_PROCESSOR_BASED_CONTROLS VmProcctlRequested = { };
 	VmProcctlRequested.fields.Cr3LoadExiting = true;
 	VmProcctlRequested.fields.MovDrExiting = true;
 	VmProcctlRequested.fields.UseIoBitmap = true;
@@ -543,7 +574,11 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	MYHYPERPLATFORM_LOG_DEBUG("SecondaryProcessorBasedControls  = %08x", VmSeconProcctl.all);
 
 	// 
-	const auto ExceptionBitmap = 0;
+	const auto ExceptionBitmap = 
+		 1 << static_cast<unsigned int>(INTERRUPTION_VECTOR::kBreakpointException) |
+		 1 << static_cast<unsigned int>(INTERRUPTION_VECTOR::kGeneralProtectionException) |
+		 1 << static_cast<unsigned int>(INTERRUPTION_VECTOR::kPageFaultException) |
+		 0;
 
 	// 启动 CR0 和 CR4 bitmaps
 	CR0 Cr0Mask = { 0 };
@@ -613,7 +648,7 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	Error |= UtilVmWrite(VMCS_FIELD::kPinBasedVmExecControl, VmPinctl.all);
 	Error |= UtilVmWrite(VMCS_FIELD::kCpuBasedVmExecControl, VmProcctl.all);
 	Error |= UtilVmWrite(VMCS_FIELD::kExceptionBitmap, ExceptionBitmap);
-	Error |= UtilVmWrite(VMCS_FIELD::kVmExitControls, VmEntryctl.all);
+	Error |= UtilVmWrite(VMCS_FIELD::kVmExitControls, VmExitctl.all);
 	Error |= UtilVmWrite(VMCS_FIELD::kVmEntryControls, VmEntryctl.all);
 	Error |= UtilVmWrite(VMCS_FIELD::kSecondaryVmExecControl, VmSeconProcctl.all);
 
@@ -646,6 +681,11 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	Error |= UtilVmWrite(VMCS_FIELD::kCr4GuestHostMask, Cr4Mask.all);
 	Error |= UtilVmWrite(VMCS_FIELD::kCr0ReadShadow, Cr0Shadow.all);
 	Error |= UtilVmWrite(VMCS_FIELD::kCr4ReadShadow, Cr4Shadow.all);
+
+	/* Natural-Width Guest-State Fields */
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCr0, __readcr0());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCr3, __readcr3());
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestCr4, __readcr4());
 #if defined(_AMD64_)
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsBase, 0);
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsBase, 0);
@@ -667,12 +707,12 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestIdtrBase, Idtr.Base);
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestDr7, __readdr(7));
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestRsp, GuestStackPointer);
-	Error |= UtilVmWrite(VMCS_FIELD::kGuestRip, GuestInstructionPointer);
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestRip, GuestInstructionPointer);		// VM 入口
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestRflags, __readeflags());
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestSysenterEsp, UtilReadMsr(MSR::kIa32SysenterEsp));
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestSysenterEip, UtilReadMsr(MSR::kIa32SysenterEip));
 
-	// 自然宽度 Host state field
+	// Natural-width Host state field
 	Error |= UtilVmWrite(VMCS_FIELD::kHostCr0, __readcr0());
 	Error |= UtilVmWrite(VMCS_FIELD::kHostCr3, __readcr3());
 	Error |= UtilVmWrite(VMCS_FIELD::kHostCr4, __readcr4());
@@ -707,10 +747,10 @@ _Use_decl_annotations_ static ULONG VmAdjustControlValue(MSR Msr, ULONG Requeste
 	MsrValue.QuadPart = UtilReadMsr64(Msr);
 	auto AdjustedValue = RequestedValue;
 
-	// 低32位，允许值0 - 当寄存器为0，控制位为0
-	AdjustedValue &= MsrValue.LowPart;
-	// 高32位，允许值1 - 当寄存器为，控制位为1
-	AdjustedValue |= MsrValue.HighPart;
+	// 高32位，允许值0 - 当寄存器为0，控制位为0
+	AdjustedValue &= MsrValue.HighPart;
+	// 低32位，允许值1 - 当寄存器为0，控制位为1
+	AdjustedValue |= MsrValue.LowPart;
 
 	return AdjustedValue;
 }
@@ -804,7 +844,7 @@ _Use_decl_annotations_ static void VmLaunchVm()
 
 	auto ErrorCode = UtilVmRead(VMCS_FIELD::kVmInstructionError);
 	if (ErrorCode)
-		MYHYPERPLATFORM_LOG_WARN("VM_INSTRUCTION_ERROR = %lu", ErrorCode);
+		MYHYPERPLATFORM_LOG_WARN("VM_INSTRUCTION_ERROR = %Iu", ErrorCode);
 
 	auto VmxStatus = static_cast<VMX_STATUS>(__vmx_vmlaunch());
 

@@ -120,6 +120,55 @@ union CR_ACCESS_QUALIFICATION {
 };
 static_assert(sizeof(CR_ACCESS_QUALIFICATION) == 8, "Size check");
 
+// See: Exit Qualification for MOV DR
+enum class DR_DIRECTION_TYPE 
+{
+	kMoveToDr = 0,
+	kMoveFromDr,
+};
+
+// @copydoc MovDrDirection
+union DR_ACCESS_QUALIFICATION 
+{
+	ULONG_PTR all;
+	struct 
+	{
+		ULONG_PTR DebugOneRegister : 3;  //!< [0:2]
+		ULONG_PTR Reserved1 : 1;        //!< [3]
+		ULONG_PTR Direction : 1;        //!< [4]
+		ULONG_PTR Reserved2 : 3;        //!< [5:7]
+		ULONG_PTR GpRegister : 4;      //!< [8:11]
+		ULONG_PTR Reserved3 : 20;       //!<
+		ULONG_PTR Reserved4 : 32;       //!< [12:63]
+	} fields;
+};
+static_assert(sizeof(DR_ACCESS_QUALIFICATION) == 8, "Size check");
+
+// IO 操作导致的 VM-exit
+union IO_INST_QUALIFICATION
+{
+	ULONG_PTR all;
+	struct  
+	{
+		ULONG_PTR SizeOfAccess : 3;      //!< [0:2]
+		ULONG_PTR Direction : 1;           //!< [3]
+		ULONG_PTR StringInstruction : 1;  //!< [4]
+		ULONG_PTR RepPrefixed : 1;        //!< [5]
+		ULONG_PTR OperandEncoding : 1;    //!< [6]
+		ULONG_PTR Reserved1 : 9;           //!< [7:15]
+		ULONG_PTR PortNumber : 16;        //!< [16:31]
+	}fields;
+};
+static_assert(sizeof(IO_INST_QUALIFICATION) == sizeof(void*), "Size check");
+
+/// @copydoc IoInstQualification
+enum class IO_INST_SIZE_OF_ACCESS
+{
+	k1Byte = 0,
+	k2Byte = 1,
+	k4Byte = 3,
+};
+
 /// See: MODEL-SPECIFIC REGISTERS (MSRS)
 enum class MSR : unsigned int {
 	kIa32ApicBase = 0x01B,
@@ -536,10 +585,10 @@ static_assert(sizeof(IA32_MTRR_CAPABILITIES_MSR) == 8, "Size check");
 union IA32_MTRR_DEFAULT_TYPE_MSR {
 	ULONG64 all;
 	struct {
-		ULONG64 default_mtemory_type : 8;  //<! [0:7] 默认内存类型 - 类型编号是8字节的
-		ULONG64 reserved : 2;              //<! [8:9] 
-		ULONG64 fixed_mtrrs_enabled : 1;   //<! [10]  FE - 固定范围MTRRs enabled
-		ULONG64 mtrrs_enabled : 1;         //<! [11]  E - MTRRs是否被启用。当这一位为0时，所有MTRRs被禁用，并且UC内存类型适用于所有的物理内存。
+		ULONG64 DefaultMemoryType : 8;  //<! [0:7] 默认内存类型 - 类型编号是8字节的
+		ULONG64 Reserved : 2;              //<! [8:9] 
+		ULONG64 FixedMtrrsEnabled : 1;   //<! [10]  FE - 固定范围MTRRs enabled
+		ULONG64 MtrrsEnabled : 1;         //<! [11]  E - MTRRs是否被启用。当这一位为0时，所有MTRRs被禁用，并且UC内存类型适用于所有的物理内存。
 	} fields;
 };
 static_assert(sizeof(IA32_MTRR_DEFAULT_TYPE_MSR) == 8, "Size check");
@@ -778,7 +827,7 @@ union VMX_PROCESSOR_BASED_CONTROLS
 		unsigned MwaitExiting : 1;				//!< [10]
 		unsigned RdpmcExiting : 1;				//!< [11]
 		unsigned RdtscExiting : 1;				//!< [12]
-		unsigned Reserved4 : 1;					//!< [13:14]
+		unsigned Reserved4 : 2;					//!< [13:14]
 		unsigned Cr3LoadExiting : 1;			//!< [15]
 		unsigned Cr3StoreExiting : 1;			//!< [16]
 		unsigned Reserved5 : 2;					//!< [17:18]
@@ -907,6 +956,27 @@ enum class INV_EPT_TYPE : ULONG_PTR
 	kSingleContextInvalidation = 1,
 	kGlobalInvalidation
 };
+
+union EPT_VIOLATION_QUALIFICATION 
+{
+	ULONG64 all;
+	struct {
+		ULONG64 ReadAccess : 1;                   //!< [0]
+		ULONG64 WriteAccess : 1;                  //!< [1]
+		ULONG64 ExecuteAccess : 1;                //!< [2]
+		ULONG64 EptReadable : 1;                  //!< [3]
+		ULONG64 EptWriteable : 1;                 //!< [4]
+		ULONG64 EptExecutable : 1;                //!< [5]
+		ULONG64 EptExecutableForUserMode : 1;  //!< [6]
+		ULONG64 ValidGuestLinearAddress : 1;    //!< [7]
+		ULONG64 CausedByTranslation : 1;         //!< [8]
+		ULONG64 UserModeLinearAddress : 1;      //!< [9]
+		ULONG64 ReadableWritablePage : 1;        //!< [10]
+		ULONG64 ExecuteDisablePage : 1;          //!< [11]
+		ULONG64 NmiUnblocking : 1;                //!< [12]
+	} fields;
+};
+static_assert(sizeof(EPT_VIOLATION_QUALIFICATION) == 8, "Size check");
 
 // INVVPID 指令描述符
 struct INV_VPID_DESCRIPTOR
@@ -1098,3 +1168,76 @@ union VM_ENTRY_INTERRUPTION_INFORMATION_FIELD
 	}fields;
 };
 static_assert(sizeof(VM_ENTRY_INTERRUPTION_INFORMATION_FIELD) == 4, "Size check");
+
+union GDTR_IDTR_INST_INFORMATION
+{
+	ULONG32 all;
+	struct {
+		ULONG32 Scalling : 2;                //!< [0:1]
+		ULONG32 Reserved1 : 5;               //!< [2:6]
+		ULONG32 AddressSize : 3;            //!< [7:9]
+		ULONG32 Reserved2 : 1;               //!< [10]
+		ULONG32 OperandSize : 1;            //!< [11]
+		ULONG32 Reserved3 : 3;               //!< [12:14]
+		ULONG32 SegmentRegister : 3;        //!< [15:17]
+		ULONG32 IndexRegister : 4;          //!< [18:21]
+		ULONG32 IndexRegisterInvalid : 1;  //!< [22]
+		ULONG32 BaseRegister : 4;           //!< [23:26]
+		ULONG32 BaseRegisterInvalid : 1;   //!< [27]
+		ULONG32 InstructionIdentity : 2;    //!< [28:29]
+		ULONG32 Reserved4 : 2;               //!< [30:31]
+	} fields;
+};
+static_assert(sizeof(GDTR_IDTR_INST_INFORMATION) == 4, "Size check");
+
+enum class SCALING
+{
+	kNoScaling = 0,
+	kScaleBy2,
+	kScaleBy4,
+	kScaleBy8,
+};
+
+enum class ADDRESS_SIZE 
+{
+	k16bit = 0,
+	k32bit,
+	k64bit,
+};
+
+
+enum class GDTR_IDTR_INST_IDENTIFY 
+{
+	kSgdt = 0,
+	kSidt,
+	kLgdt,
+	kLidt,
+};
+
+union LDTR_TR_INST_INFORMATION {
+	ULONG32 all;
+	struct {
+		ULONG32 Scalling : 2;                //!< [0:1]
+		ULONG32 Reserved1 : 1;               //!< [2]
+		ULONG32 Register1 : 4;               //!< [3:6]
+		ULONG32 AddressSize : 3;            //!< [7:9]
+		ULONG32 RegisterAccess : 1;         //!< [10]
+		ULONG32 Reserved2 : 4;               //!< [11:14]
+		ULONG32 SegmentRegister : 3;        //!< [15:17]
+		ULONG32 IndexRegister : 4;          //!< [18:21]
+		ULONG32 IndexRegisterInvalid : 1;  //!< [22]
+		ULONG32 BaseRegister : 4;           //!< [23:26]
+		ULONG32 BaseRegisterInvalid : 1;   //!< [27]
+		ULONG32 InstructionIdentity : 2;    //!< [28:29]
+		ULONG32 Reserved4 : 2;               //!< [30:31]
+	} fields;
+};
+static_assert(sizeof(LDTR_TR_INST_INFORMATION) == 4, "Size check");
+
+enum class LDTR_TR_INST_IDENTITY 
+{
+	kSldt = 0,
+	kStr,
+	kLldt,
+	kLtr,
+};

@@ -28,12 +28,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	UNREFERENCED_PARAMETER(RegisterPath);
 	UNREFERENCED_PARAMETER(DriverObject);
 	// LogFile 变量初始化
-	static const wchar_t LogFilePath[] = L"\\SystemRoot\\HyperPlatform.log";
+	static const wchar_t LogFilePath[] = L"\\SystemRoot\\MyHyperPlatform.log";
+	// Log 等级 - 控制信息输出和记录
 	static const unsigned long LogLevel = (IsReleaseBuild()) ? LogPutLevelInfo  | LogOptDisableFunctionName :
 															   LogPutLevelDebug | LogOptDisableFunctionName;
 
 	// UnloadDriver
 	DriverObject->DriverUnload = DriverUnload;
+	MYHYPERPLATFORM_COMMON_DBG_BREAK();
 
 	// 请求 NX 非分页内存池
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);	// 这个函数必须在任何内存申请操作之前
@@ -46,10 +48,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 		return NtStatus;
 
 	// 检查系统是否支持
-	if (IsSupportedOS())
+	if (!IsSupportedOS())
 	{
+		MYHYPERPLATFORM_LOG_INFO_SAFE("This system is not support.");
 		LogTermination();
-		return NtStatus;
+		return STATUS_CANCELLED;
 	}
 
 	//  初始化全局变量
@@ -111,8 +114,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 	}
 
 	// 如果需要，注册重初始化函数为log函数
-	//if (NeedReinitialization)
-	//	LogRegisterReinitialization(DriverObject);
+	if (NeedReinitialization)
+		LogRegisterReinitialization(DriverObject);
 
 	MYHYPERPLATFORM_LOG_PRINT("The VM has been installed.");
 	return NtStatus;
@@ -121,6 +124,16 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 VOID DriverUnload(PDRIVER_OBJECT DriverObject)
 {
 	UNREFERENCED_PARAMETER(DriverObject);
+	PAGED_CODE();
+
+	MYHYPERPLATFORM_COMMON_DBG_BREAK();
+	VmTermination();
+	HotplugCallbackTermination();
+	PowerCallbackTermination();
+	UtilTermination();
+	PerfTermination();
+	GlobalVariablesTermination();
+	LogTermination();
 }
 
 // 检查系统是否支持

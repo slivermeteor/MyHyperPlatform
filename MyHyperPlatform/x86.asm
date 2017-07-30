@@ -1,4 +1,4 @@
-.686P
+.686p
 .model flat, stdcall
 .mmx
 .xmm
@@ -56,7 +56,7 @@ AsmInitializeVm PROC VmInitializationRoutine, Context
 	xor eax, eax
 	ret
 
-AsmResumeVm:
+AsmResumeVm:	; VM Êµ¼Ê´úÂë
 	nop
 	popad
 	popfd
@@ -291,4 +291,5 @@ VmxError:
 	int 3	; ÖÕ¶Ë
 AsmVmmEntryPoint ENDP
 
+PURGE ASM_DUMP_REGISTERS
 END

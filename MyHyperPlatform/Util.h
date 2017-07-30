@@ -127,6 +127,10 @@ VMX_STATUS UtilInvvpidIndividualAddress(_In_ USHORT Vpid, _In_ void* Address);
 // @return A result of the INVVPID instruction
 VMX_STATUS UtilInvvpidAllContext();
 
+/// Executes the INVVPID instruction (type 3)
+/// @return A result of the INVVPID instruction
+VMX_STATUS UtilInvvpidSingleContextExceptGlobal(_In_ USHORT Vpid);
+
 // 检查当前系统是否是 32位下的 PAE 分页模式
 bool UtilIsX86PAE();
 
