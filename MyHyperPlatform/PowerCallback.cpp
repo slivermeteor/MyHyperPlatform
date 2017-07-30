@@ -17,6 +17,7 @@ static CALLBACK_FUNCTION PowerCallbackRoutine;
 static PCALLBACK_OBJECT g_PC_CallbackObject = nullptr;	// PowerState 回调对象
 static PVOID g_PC_Registration = nullptr;			    // 回调函数句柄
 
+
 _Use_decl_annotations_ NTSTATUS PowerCallbackInitialization()
 {
 	PAGED_CODE();
@@ -27,7 +28,7 @@ _Use_decl_annotations_ NTSTATUS PowerCallbackInitialization()
 	// 创建或者打开一个回调对象
 	// 第三参数决定是打开还是创建 - FALSE 打开
 	// \\Callback\\PowerState \\Callback\\SetSystemTime 是两个系统创建好的 可以直接使用的回调对象
-	// 笔记
+	// 关机的时候，进行各项回收处理 - 类似 Unload。
 	auto NtStatus = ExCreateCallback(&g_PC_CallbackObject, &ObjectAttributes, FALSE, TRUE);
 	if (!NT_SUCCESS(NtStatus))
 		return NtStatus;

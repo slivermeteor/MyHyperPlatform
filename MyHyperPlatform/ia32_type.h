@@ -521,12 +521,12 @@ union IA32_FEATURE_CONTROL_MSR
 {
 	unsigned __int64 all;
 	struct {
-		unsigned lock : 1;                  //!< [0]
-		unsigned enable_smx : 1;            //!< [1]
-		unsigned enable_vmxon : 1;          //!< [2]
+		unsigned Lock : 1;                  //!< [0]
+		unsigned EnableSmx : 1;            //!< [1]
+		unsigned EnableVmxon : 1;          //!< [2]
 		unsigned reserved1 : 5;             //!< [3:7]
-		unsigned enable_local_senter : 7;   //!< [8:14]
-		unsigned enable_global_senter : 1;  //!< [15]
+		unsigned EnableLocalSenter : 7;   //!< [8:14]
+		unsigned EnableGlobalSenter : 1;  //!< [15]
 		unsigned reserved2 : 16;            //!<
 		unsigned reserved3 : 32;            //!< [16:63]
 	} fields;

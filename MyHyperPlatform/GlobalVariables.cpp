@@ -1,7 +1,7 @@
 #include "GlobalVariables.h"
 
-// .CRT section is required to invoke ctors and dtors. This pragma embeds a .CRT
-// section into the .rdata section. Or else, a LNK warning would be raised.
+// .CRT 节要求调用 ctors and dtors. 当前程序嵌入一个 .CRT 节到 .rdata 节。
+// 或者会触发一个链接警告
 #pragma comment(linker, "/merge:.CRT=.rdata")
 
 // 创建两个节 - 来放置ctors数组 在编译时 - 注意按照字母顺序排序
@@ -37,6 +37,7 @@ __declspec(allocate(".CRT$XCZ")) static DESTRUCTOR g_GopCtorsEnd[1] = {};
 // 存储 销毁器 的指针，在退出的时候要用
 static SINGLE_LIST_ENTRY gGopDtorsListHead = {};
 
+// 如果你有任何全局变量需要初始化，放入到 g_GopCtorsBegin 。在这里使用。在当前框架中未使用到。
 _Use_decl_annotations_ NTSTATUS GlobalVariablesInitialization()
 {
 	PAGED_CODE();

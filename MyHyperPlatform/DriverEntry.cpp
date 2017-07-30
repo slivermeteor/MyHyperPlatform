@@ -63,7 +63,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 		return NtStatus;
 	}
 
-	// 初始化行为函数 ?
+	// 初始化行为记录函数 
 	NtStatus = PerfInitialization();
 	if (!NT_SUCCESS(NtStatus)) {
 		GlobalVariablesTermination();

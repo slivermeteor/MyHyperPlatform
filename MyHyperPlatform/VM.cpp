@@ -99,13 +99,14 @@ _Use_decl_annotations_ NTSTATUS VmInitialization()
 	if (!SharedData)
 		return STATUS_MEMORY_NOT_ALLOCATED;
 
-	// 读取和存储所有 MTRR 寄存器， 用来纠正 EPT 内存类型
+	// 读取和存储所有 MTRR 寄存器，用来纠正 EPT 内存类型
 	EptInitializeMtrrEntries();
 
 	// 虚拟化所有的处理器
 	auto NtStatus = UtilForEachProcessor(VmStartVm, SharedData);
 	if (!NT_SUCCESS(NtStatus))
 	{
+		// 失败停止
 		UtilForEachProcessor(VmStopVm, nullptr);
 		return NtStatus;
 	}
@@ -142,6 +143,7 @@ _Use_decl_annotations_ static bool VmIsVmxAvailable()
 {
 	PAGED_CODE();
 
+	// P128 2.2.3
 	// 检查标志位 CPUID.01H:ECX[5].VMX 1 - support
 	int CpuInfo[4] = { 0 };
 	__cpuid(CpuInfo, 1);
@@ -162,7 +164,7 @@ _Use_decl_annotations_ static bool VmIsVmxAvailable()
 
 	// 有效化 VMX 并开启 VMX 
 	IA32_FEATURE_CONTROL_MSR VmxFeatureControlMsr = { UtilReadMsr64(MSR::kIa32FeatureControl) };
-	if (!VmxFeatureControlMsr.fields.lock)
+	if (!VmxFeatureControlMsr.fields.Lock)
 	{
 		// 如果 IA32_FEATURE_CONTROL_MSR 的lock没有上锁 - 尝试上锁
 		MYHYPERPLATFORM_LOG_INFO("The IA32_FEATURE_CONTROL_MSR lock (bit 1) is 0. Attempting to set 1.");
@@ -171,13 +173,13 @@ _Use_decl_annotations_ static bool VmIsVmxAvailable()
 			return false;
 	}
 										   
-	if (!VmxFeatureControlMsr.fields.enable_vmxon)
+	if (!VmxFeatureControlMsr.fields.EnableVmxon)
 	{
 		MYHYPERPLATFORM_LOG_ERROR("VMX features are not enabled.");
 		return false;
 	}
 
-	// 检查EPT机制是否有效
+	// 检查EPT机制是否支持
 	if (!EptIsEptAvailable())
 	{
 		MYHYPERPLATFORM_LOG_ERROR("EPT features are not enabled.");
@@ -194,15 +196,15 @@ _Use_decl_annotations_ static NTSTATUS VmSetLockBitCallback(void* Context)
 	PAGED_CODE();
 
 	IA32_FEATURE_CONTROL_MSR Ia32FeatureControlMsr = { UtilReadMsr64(MSR::kIa32FeatureControl) };
-	if (Ia32FeatureControlMsr.fields.lock)
+	if (Ia32FeatureControlMsr.fields.Lock)
 		return STATUS_SUCCESS;
 
 	// 读值 修改 写回
-	Ia32FeatureControlMsr.fields.lock = true;
+	Ia32FeatureControlMsr.fields.Lock = true;
 	UtilWriteMsr64(MSR::kIa32FeatureControl, Ia32FeatureControlMsr.all);
 	// 重新读取 判断是否写入成功
 	Ia32FeatureControlMsr.all = UtilReadMsr64(MSR::kIa32FeatureControl);
-	if (!Ia32FeatureControlMsr.fields.lock)
+	if (!Ia32FeatureControlMsr.fields.Lock)
 	{
 		MYHYPERPLATFORM_LOG_ERROR("IA32_FEATURE_CONTROL_MSR lock bit is still 0.");
 		return STATUS_DEVICE_CONFIGURATION_ERROR;

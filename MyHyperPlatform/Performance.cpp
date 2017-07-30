@@ -2,6 +2,9 @@
 #include "Performance.h"
 #include "Log.h"
 
+// 这一系列函数主要用来记录一些具体函数的执行时间和调用次数等等
+// 也就调用行为记录
+
 static PERF_COLLECTOR::INITIAL_OUTPUT_ROUTINE PerfInitialOutputRoutine;
 static PERF_COLLECTOR::FINAL_OUTPUT_ROUTINE PerfFinalOutputRoutine;
 static PERF_COLLECTOR::OUTPUT_ROUTINE PerfOutputRoutine;
@@ -61,6 +64,7 @@ _Use_decl_annotations_ static void PerfFinalOutputRoutine(void* OutputContext)
 	UNREFERENCED_PARAMETER(OutputContext);
 }
 
+// 得到调用次数
 ULONG64 PerfGetTime()
 {
 	LARGE_INTEGER Counter = KeQueryPerformanceCounter(nullptr);

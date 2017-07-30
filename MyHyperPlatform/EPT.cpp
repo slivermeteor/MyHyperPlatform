@@ -103,7 +103,7 @@ static EPT_COMMON_ENTRY* EptGetEptPtEntryByLevel(_In_ EPT_COMMON_ENTRY* Table, _
 #endif
 
 
-// 插件EPT机制是否支持 - 处理器虚拟化 2.5.12
+// 监测EPT机制是否支持 - 处理器虚拟化 2.5.12
 _Use_decl_annotations_ bool EptIsEptAvailable()
 {
 	PAGED_CODE();

@@ -125,7 +125,7 @@ _Use_decl_annotations_ NTSTATUS LogInitialization(ULONG Flag, const wchar_t* Log
 
 	// 输出Log信息
 	MYHYPERPLATFORM_LOG_DEBUG("Info=%p, Buffer=%p %p, File=%S", &g_LogBufferInfo, g_LogBufferInfo.LogBufferOne, g_LogBufferInfo.LogBufferTwo, LogFilePath);
-	return (NeedReinitialization ? STATUS_REINITIALIZATION_NEEDED : STATUS_SUCCESS);
+	return (NeedReinitialization ? STATUS_REINITIALIZATION_NEEDED : STATUS_SUCCESS);	// 正确退出
 
 FAIL:
 	if (LogFilePath)
@@ -172,6 +172,7 @@ _Use_decl_annotations_ static NTSTATUS LogInitializeBufferInfo(const wchar_t* Lo
 	}
 
 	// 初始化两块Buffer
+	// 两块 Buffer， 一块用来写入(LogFlushLogBuffer), 一块用来输出(LogBufferMessage)。
 	RtlFillMemory(LogBufferInfo->LogBufferOne, LogBufferSize, 0xFF);
 	LogBufferInfo->LogBufferOne[0] = '\0';
 	LogBufferInfo->LogBufferOne[LogBufferSize - 1] = '\0';
@@ -180,7 +181,9 @@ _Use_decl_annotations_ static NTSTATUS LogInitializeBufferInfo(const wchar_t* Lo
 	LogBufferInfo->LogBufferTwo[0] = '\0';
 	LogBufferInfo->LogBufferTwo[LogBufferSize - 1] = '\0';
 
-	// 写入 Buffer 时使用的都是 LogBufferOne, 所以写入的也是Buffer的Head
+	// 写入 Buffer 时使用的都是写入 LogBufferTail
+	// 读取 Buffer 都从 LogBufferHead 开始读取
+	// 在切换 读取和写入Buffer的时候，也有牵涉到这两个变量的变化。具体见 LogFlushLogBuffer
 	LogBufferInfo->LogBufferHead = LogBufferInfo->LogBufferOne;
 	LogBufferInfo->LogBufferTail = LogBufferInfo->LogBufferOne;
 
@@ -477,17 +480,19 @@ _Use_decl_annotations_ static NTSTATUS LogFlushLogBuffer(LOG_BUFFER_INFO* LogBuf
 	// 队列自旋锁在多核多线程的机器上，更加高效。保证是第一个申请锁的先执行。
 	// 这里申请锁，为了改变 LogBufferHead 安全
 	KLOCK_QUEUE_HANDLE LockHandle = {};
+	// 锁在切换和写入的时候才使用。
+	// 在读取的时候不用。因为主要牵涉到 Head 和 Tail 的修改
 	KeAcquireInStackQueuedSpinLock(&LogBufferInfo->SpinLock, &LockHandle);
 
-	// 得到当前头
+	// 得到当前的写入Buffer
 	const auto OldLogBuffer = const_cast<char*>(LogBufferInfo->LogBufferHead);
-	if (OldLogBuffer[0])	// 如果使用了，就要进行切换
+	if (OldLogBuffer[0])	// 判断是否使用了，如果没有使用就没有切换的需要
 	{
-		// 如果上一次写入的是 One，Head 就指向two。反之亦然
+		// 切换写入 Buffer 另一个 Buffer 上。
 		LogBufferInfo->LogBufferHead = (OldLogBuffer == LogBufferInfo->LogBufferOne)
 			? LogBufferInfo->LogBufferTwo : LogBufferInfo->LogBufferOne;
-		LogBufferInfo->LogBufferHead[0] = '\0';	// 情况当前Buffer
-		LogBufferInfo->LogBufferTail = LogBufferInfo->LogBufferHead;	// Tail 标示上次使用的内存
+		LogBufferInfo->LogBufferHead[0] = '\0';		// 清空 Buffer
+		LogBufferInfo->LogBufferTail = LogBufferInfo->LogBufferHead; // 尾部回到当前写入 Buffer 首部。	
 	}
 	KeReleaseInStackQueuedSpinLock(&LockHandle);	
 
@@ -498,6 +503,7 @@ _Use_decl_annotations_ static NTSTATUS LogFlushLogBuffer(LOG_BUFFER_INFO* LogBuf
 		const auto IsPrinteOut = LogIsPrinted(CurrentLogEntry);
 		LogSetPrintedBit(CurrentLogEntry, false);					// 设置标志位 - 标示已经输出
 
+		// 得到长度，写入文件。
 		const auto CurrentLogEntryLength = strlen(CurrentLogEntry);
 		NtStatus = ZwWriteFile(LogBufferInfo->LogFileHandle, nullptr, nullptr, nullptr, &IoStatusBlock, CurrentLogEntry, static_cast<ULONG>(CurrentLogEntryLength), nullptr, nullptr);
 		if (!NT_SUCCESS(NtStatus)) //  // It could happen when you did not register IRP_SHUTDOWN and call LogIrpShutdownHandler() and the system tried to log to a file after a file system was unmounted.
@@ -569,9 +575,10 @@ _Use_decl_annotations_ static NTSTATUS LogBufferMessage(const char* Message, LOG
 {
 	NT_ASSERT(LogBufferInfo);
 
-	// 申请自旋锁 - 对于LogBufferInfo操作都需要进行线程同步
+	// 申请自旋锁 - 牵涉 Head Tail 必须上锁
 	KLOCK_QUEUE_HANDLE LockHandle = { 0 };
 	const auto OldIRQL = KeGetCurrentIrql();
+	
 	if (OldIRQL < PASSIVE_LEVEL)
 		KeAcquireInStackQueuedSpinLock(&LogBufferInfo->SpinLock, &LockHandle);
 	else
@@ -581,7 +588,7 @@ _Use_decl_annotations_ static NTSTATUS LogBufferMessage(const char* Message, LOG
 
 	// 将当前的 Logbuffer 拷贝出来
 	SIZE_T UsedBufferSize = LogBufferInfo->LogBufferTail - LogBufferInfo->LogBufferHead;
-	NTSTATUS NtStatus = RtlStringCchCopyA(const_cast<char*>(LogBufferInfo->LogBufferTail), LogBufferUsableSize - UsedBufferSize, Message);	// 拷贝的最大长度 是还可以使用的长度
+	NTSTATUS NtStatus = RtlStringCchCopyA(const_cast<char*>(LogBufferInfo->LogBufferTail), LogBufferUsableSize - UsedBufferSize, Message);	// 拷贝的长度 是还可以使用的长度
 
 	// 更新 LogBufferTail 可能更新 LogMaxUsage
 	if (NT_SUCCESS(NtStatus))
@@ -594,9 +601,9 @@ _Use_decl_annotations_ static NTSTATUS LogBufferMessage(const char* Message, LOG
 			LogBufferInfo->LogMaxUsage = UsedBufferSize;
 	}
 	else
-		LogBufferInfo->LogMaxUsage = LogBufferSize;	// 表示已经溢出
+		LogBufferInfo->LogMaxUsage = LogBufferSize;		// 表示已经溢出
 
-	*LogBufferInfo->LogBufferTail = '\0';
+	*LogBufferInfo->LogBufferTail = '\0';	// 每次写入完成，加 0。用来读取时候，作为分隔符。
 
 	if (OldIRQL < DISPATCH_LEVEL)
 		KeReleaseInStackQueuedSpinLock(&LockHandle);

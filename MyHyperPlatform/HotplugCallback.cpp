@@ -20,7 +20,7 @@ _Use_decl_annotations_ NTSTATUS HotplugCallbackInitialization()
 {
 	PAGED_CODE();
 
-	// 注册热插拔回调
+	// 注册热插拔回调 - 任何插入的新CPU也执行虚拟化
 	auto CallbackHandle = KeRegisterProcessorChangeCallback(HotplugCallbackRoutine, nullptr, 0);
 	if (!CallbackHandle)
 		return STATUS_UNSUCCESSFUL;
@@ -50,6 +50,7 @@ _Use_decl_annotations_ static void HotplugCallbackRoutine(PVOID CallbackContext,
 	MYHYPERPLATFORM_LOG_DEBUG("A new processor %hu:%hu has been added.", ChangeContext->ProcNumber.Group, ChangeContext->ProcNumber.Number);
 	MYHYPERPLATFORM_COMMON_DBG_BREAK();
 
+	// VM 提供的回调 
 	auto NtStatus = VmHotplugCallback(ChangeContext->ProcNumber);
 	if (!NT_SUCCESS(NtStatus))
 		MYHYPERPLATFORM_LOG_ERROR("Failed to virtualize the new processors.");
