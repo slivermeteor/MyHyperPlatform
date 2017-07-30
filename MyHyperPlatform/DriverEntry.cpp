@@ -35,9 +35,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 	// UnloadDriver
 	DriverObject->DriverUnload = DriverUnload;
-	MYHYPERPLATFORM_COMMON_DBG_BREAK();
+	MYHYPERPLATFORM_COMMON_DBG_BREAK();				// 调试时，触发断点
 
-	// 请求 NX 非分页内存池
+	// 请求 NX 非分页内存池 -  查看 driverentry.cpp 第一行开始的注释
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);	// 这个函数必须在任何内存申请操作之前
 
 	// 初始化 Log 函数

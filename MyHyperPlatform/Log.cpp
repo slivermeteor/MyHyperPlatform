@@ -31,7 +31,7 @@ typedef struct _LOG_BUFFER_INFO_
 	KSPIN_LOCK SpinLock;
 	ERESOURCE Resource;
 	bool ResourceInitialized;
-	volatile bool BufferFlushThreadShouldBeAlive;
+	volatile bool BufferFlushThreadShouldBeAlive;		// 控制刷新线程运行变量
 	volatile bool BufferFlushThreadStarted;
 
 	HANDLE	BufferFlushThreadHandle;
@@ -113,9 +113,9 @@ _Use_decl_annotations_ NTSTATUS LogInitialization(ULONG Flag, const wchar_t* Log
 	{
 		NtStatus = LogInitializeBufferInfo(LogFilePath, &g_LogBufferInfo);
 		if (NtStatus == STATUS_REINITIALIZATION_NEEDED)
-			NeedReinitialization = true;
+			NeedReinitialization = true;	// 需要等待第二时间初始化
 		else if (!NT_SUCCESS(NtStatus))
-			return NtStatus;
+			return NtStatus;				// 失败
 	}
 
 	// 测试Log
@@ -123,6 +123,7 @@ _Use_decl_annotations_ NTSTATUS LogInitialization(ULONG Flag, const wchar_t* Log
 	if (!NT_SUCCESS(NtStatus))
 		goto FAIL;
 
+	// 输出Log信息
 	MYHYPERPLATFORM_LOG_DEBUG("Info=%p, Buffer=%p %p, File=%S", &g_LogBufferInfo, g_LogBufferInfo.LogBufferOne, g_LogBufferInfo.LogBufferTwo, LogFilePath);
 	return (NeedReinitialization ? STATUS_REINITIALIZATION_NEEDED : STATUS_SUCCESS);
 
@@ -133,7 +134,7 @@ FAIL:
 	return NtStatus;
 } 
 
-// 初始化一个LogFile 
+// 初始化传入的第二个成员 LOG_BUFFER_INFO 变量
 _Use_decl_annotations_ static NTSTATUS LogInitializeBufferInfo(const wchar_t* LogFilePath, LOG_BUFFER_INFO* LogBufferInfo)
 {
 	PAGED_CODE();
@@ -179,14 +180,15 @@ _Use_decl_annotations_ static NTSTATUS LogInitializeBufferInfo(const wchar_t* Lo
 	LogBufferInfo->LogBufferTwo[0] = '\0';
 	LogBufferInfo->LogBufferTwo[LogBufferSize - 1] = '\0';
 
-	// LogBufferHead应该始终作为头指向，Tail应该始终指向当前写入的结束
+	// 写入 Buffer 时使用的都是 LogBufferOne, 所以写入的也是Buffer的Head
 	LogBufferInfo->LogBufferHead = LogBufferInfo->LogBufferOne;
 	LogBufferInfo->LogBufferTail = LogBufferInfo->LogBufferOne;
 
+	// 真正初始化函数
 	NtStatus = LogInitializeLogFile(LogBufferInfo);
 	if (NtStatus == STATUS_OBJECT_PATH_NOT_FOUND)	
 		MYHYPERPLATFORM_LOG_INFO("The log file needs to be activated later.");	
-	else if (!NT_SUCCESS(NtStatus))
+	else if (!NT_SUCCESS(NtStatus))	// 失败 - 清理资源
 		LogFinalizeBufferInfo(LogBufferInfo);
 
 	return NtStatus;
@@ -467,22 +469,26 @@ _Use_decl_annotations_ static NTSTATUS LogFlushLogBuffer(LOG_BUFFER_INFO* LogBuf
 
 	NTSTATUS NtStatus = STATUS_SUCCESS;
 
-	// 进入临界区 - 并且上锁
+	// 进入临界区 - 并且上锁资源
 	ExEnterCriticalRegionAndAcquireResourceExclusive(&LogBufferInfo->Resource);
 
-	// 申请自旋锁
+	// 申请队列自旋锁 
+	// https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/queued-spin-locks 关于 Queued Spin Lock 
+	// 队列自旋锁在多核多线程的机器上，更加高效。保证是第一个申请锁的先执行。
+	// 这里申请锁，为了改变 LogBufferHead 安全
 	KLOCK_QUEUE_HANDLE LockHandle = {};
 	KeAcquireInStackQueuedSpinLock(&LogBufferInfo->SpinLock, &LockHandle);
 
+	// 得到当前头
 	const auto OldLogBuffer = const_cast<char*>(LogBufferInfo->LogBufferHead);
-	if (OldLogBuffer[0])
+	if (OldLogBuffer[0])	// 如果使用了，就要进行切换
 	{
+		// 如果上一次写入的是 One，Head 就指向two。反之亦然
 		LogBufferInfo->LogBufferHead = (OldLogBuffer == LogBufferInfo->LogBufferOne)
 			? LogBufferInfo->LogBufferTwo : LogBufferInfo->LogBufferOne;
-		LogBufferInfo->LogBufferHead[0] = '\0';
-		LogBufferInfo->LogBufferTail = LogBufferInfo->LogBufferHead;
+		LogBufferInfo->LogBufferHead[0] = '\0';	// 情况当前Buffer
+		LogBufferInfo->LogBufferTail = LogBufferInfo->LogBufferHead;	// Tail 标示上次使用的内存
 	}
-
 	KeReleaseInStackQueuedSpinLock(&LockHandle);	
 
 	// 将所有OldLogBuffer写入文件
@@ -490,7 +496,7 @@ _Use_decl_annotations_ static NTSTATUS LogFlushLogBuffer(LOG_BUFFER_INFO* LogBuf
 	for (auto CurrentLogEntry = OldLogBuffer; CurrentLogEntry[0]; )
 	{
 		const auto IsPrinteOut = LogIsPrinted(CurrentLogEntry);
-		LogSetPrintedBit(CurrentLogEntry, false);					// 设置标志位
+		LogSetPrintedBit(CurrentLogEntry, false);					// 设置标志位 - 标示已经输出
 
 		const auto CurrentLogEntryLength = strlen(CurrentLogEntry);
 		NtStatus = ZwWriteFile(LogBufferInfo->LogFileHandle, nullptr, nullptr, nullptr, &IoStatusBlock, CurrentLogEntry, static_cast<ULONG>(CurrentLogEntryLength), nullptr, nullptr);
@@ -573,7 +579,7 @@ _Use_decl_annotations_ static NTSTATUS LogBufferMessage(const char* Message, LOG
 
 	NT_ASSERT(KeGetCurrentIrql() >= DISPATCH_LEVEL);
 
-	// 将当前的Logbuffer 拷贝出来
+	// 将当前的 Logbuffer 拷贝出来
 	SIZE_T UsedBufferSize = LogBufferInfo->LogBufferTail - LogBufferInfo->LogBufferHead;
 	NTSTATUS NtStatus = RtlStringCchCopyA(const_cast<char*>(LogBufferInfo->LogBufferTail), LogBufferUsableSize - UsedBufferSize, Message);	// 拷贝的最大长度 是还可以使用的长度
 
@@ -600,11 +606,12 @@ _Use_decl_annotations_ static NTSTATUS LogBufferMessage(const char* Message, LOG
 	return NtStatus;
 }
 
-// 初始化Log文件 并且开启刷新线程
+// 初始化 LogBufferInfo 中有关文件的成员  并且开启刷新线程
 _Use_decl_annotations_ static NTSTATUS LogInitializeLogFile(LOG_BUFFER_INFO* LogBufferInfo)
 {
 	PAGED_CODE();
 
+	// 如果已经完成了 - 退出
 	if (LogBufferInfo->LogFileHandle)
 		return STATUS_SUCCESS;
 
@@ -632,7 +639,8 @@ _Use_decl_annotations_ static NTSTATUS LogInitializeLogFile(LOG_BUFFER_INFO* Log
 		return NtStatus;
 	}
 
-	// 等待到线程启动完成
+	// 等待到线程启动完成 - 判断 BufferFlushThreadStarted
+	// 目标线程在初始化完成后，修改变量。这里等待变量值的修改
 	while (!LogBufferInfo->BufferFlushThreadStarted)
 		LogSleep(100);
 
@@ -660,6 +668,7 @@ _Use_decl_annotations_ static VOID LogBufferFlushThreadRoutine(void* StartContex
 
 	MYHYPERPLATFORM_LOG_DEBUG("Log thread started (TID = %p).", PsGetCurrentThreadId());
 
+	// BufferFlushThreadShouldBeAlive !!!
 	while (LogBufferInfo->BufferFlushThreadShouldBeAlive)
 	{
 		NT_ASSERT(LogIsLogFileActivated(*LogBufferInfo));
@@ -669,10 +678,12 @@ _Use_decl_annotations_ static VOID LogBufferFlushThreadRoutine(void* StartContex
 			NT_ASSERT(!KeAreAllApcsDisabled());
 			NtStatus = LogFlushLogBuffer(LogBufferInfo);
 
-			// 对于性能行为不进行写入 - 因为要能通过查看Buffer来恢复Log
+			// 别为整体性能(overall performance)刷新文件。
+			//就算触发了 KeBugCheck, 我们也可以通过 LogBuffer 恢复 Log
 		}
 		LogSleep(LogFlushIntervalMsec);
 	}
+
 	PsTerminateSystemThread(NtStatus);
 }
 

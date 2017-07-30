@@ -2,6 +2,9 @@
 
 #include <fltKernel.h>
 
+// C30030 - 执行内存申请在一个使用 POOL_NX_OPTIN 宏编译的驱动里
+// 因为 POOL_NX_OPTIN + ExInitializeDriverRuntime 已经执行在 DriverEntry 所以关闭这个警告
+// 在 Win10 Build 14393 后，这个警告可能出现无法被正确被编译器处理的情况。所以手动关闭
 #pragma prefast(disable : 30030)
 
 #if !defined(MYHYPERPLATFORM_COMMON_DBG_BREAK)
