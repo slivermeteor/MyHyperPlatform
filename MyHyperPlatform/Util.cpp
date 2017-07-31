@@ -30,7 +30,7 @@ typedef struct _LDR_DATA_TABLE_ENTRY_
 	void* EntryPoint;
 	ULONG SizeOfImage;
 	UNICODE_STRING FullDllName;
-	// ... 不再实现 ???
+	// ... 不再实现 
 }LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
 
 //////////////////////////////////////////////////////////////////////////

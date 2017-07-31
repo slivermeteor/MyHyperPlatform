@@ -133,5 +133,8 @@
     <MASM Include="x86.asm">
       <Filter>VM\ASM</Filter>
     </MASM>
+    <MASM Include="x64.asm">
+      <Filter>VM\ASM</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

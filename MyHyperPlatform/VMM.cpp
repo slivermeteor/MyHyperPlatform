@@ -10,6 +10,7 @@
 
 EXTERN_C_START
 
+// Vmm文件主要处理 VM-exit 第五章节
 
 // 决定是否记录 VM-Exit
 static const long kVmmEnableRecordVmExit = true;
@@ -960,7 +961,7 @@ _Use_decl_annotations_ static void VmmHandleGdtrOrIdtrAccess(GUEST_CONTEXT* Gues
 		Base = *RegisterUsed;
 	}
 
-	ULONG Index = 0;
+	ULONG_PTR Index = 0;
 	if (!ExitQualification.fields.IndexRegisterInvalid)
 	{
 		const auto RegisterUsed = VmmSelectRegister(ExitQualification.fields.IndexRegister, GuestContext);

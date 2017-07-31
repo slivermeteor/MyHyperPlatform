@@ -26,6 +26,8 @@ inline void __lgdt(_In_ void* gdtr)
 }
 
 
+// 下面几个函数在x86下需要自己定义
+#if defined(_X86_)
 //  激活处理器VMX模式
 // @param VmsSupportPhysicalAddress  64位的 VMXON 区域地址
 // @return Equivalent to #VmxStatus
@@ -60,6 +62,31 @@ inline unsigned char __vmx_on(_In_ unsigned __int64 *VmsSupportPhysicalAddress)
 	if (FlagRegister.fields.zf) 
 		return 1;
 	
+	return 0;
+}
+
+// Places the calling application in VMX non-root operation state (VM enter)
+// @return Equivalent to #VmxStatus
+inline unsigned char __vmx_vmlaunch()
+{
+	FLAG_REGISTER Flags = { 0 };
+
+	__asm
+	{
+		_emit 0x0f
+		_emit 0x01
+		_emit 0xc2  // VMLAUNCH
+
+		pushfd
+		pop Flags.all
+	}
+
+	if (Flags.fields.cf)
+		return 2;
+
+	if (Flags.fields.zf)
+		return 1;
+
 	return 0;
 }
 
@@ -136,18 +163,6 @@ inline unsigned char __vmx_vmptrld(_In_ unsigned __int64* VmcsPhysicalAddress)
 	return 0;
 }
 
-// 读取 GDT
-inline void __sgdt(_Out_ void* Gdtr)
-{
-	AsmReadGDT(static_cast<GDTR*>(Gdtr));
-}
-
-// 写入 GDT
-inline void __igdt(_In_ void* Gdtr)
-{
-	AsmWriteGDT(static_cast<GDTR*>(Gdtr));
-}
-
 // 写入特定值到当前VMCS特定域里面
 inline unsigned char __vmx_vmwrite(_In_ size_t Field, _In_ size_t FieldValue)
 {
@@ -183,11 +198,11 @@ inline unsigned char __vmx_vmwrite(_In_ size_t Field, _In_ size_t FieldValue)
 // @param Field  The VMCS field to read
 // @param FieldValue  A pointer to the location to store the value read from the VMCS field specified by the Field parameter
 // @return Equivalent to #VmxStatus
-inline unsigned char __vmx_vmread(_In_ size_t Field, _Out_ size_t *FieldValue) 
+inline unsigned char __vmx_vmread(_In_ size_t Field, _Out_ size_t *FieldValue)
 {
 	FLAG_REGISTER Flags = { 0 };
 
-	__asm 
+	__asm
 	{
 		pushad
 		mov eax, Field
@@ -204,39 +219,33 @@ inline unsigned char __vmx_vmread(_In_ size_t Field, _Out_ size_t *FieldValue)
 		popad
 	}
 
-	if (Flags.fields.cf) 
-		return 2;
-	
-	if (Flags.fields.zf) 
-		return 1;
-	
-	return 0;
-}
-
-// Places the calling application in VMX non-root operation state (VM enter)
-// @return Equivalent to #VmxStatus
-inline unsigned char __vmx_vmlaunch() 
-{
-	FLAG_REGISTER Flags = { 0 };
-
-	__asm 
-	{
-		_emit 0x0f
-		_emit 0x01
-		_emit 0xc2  // VMLAUNCH
-
-		pushfd
-		pop Flags.all
-	}
-
 	if (Flags.fields.cf)
 		return 2;
-	
+
 	if (Flags.fields.zf)
 		return 1;
-	
+
 	return 0;
 }
+
+#endif
+
+// 读取 GDT
+inline void __sgdt(_Out_ void* Gdtr)
+{
+	AsmReadGDT(static_cast<GDTR*>(Gdtr));
+}
+
+// 写入 GDT
+inline void __igdt(_In_ void* Gdtr)
+{
+	AsmWriteGDT(static_cast<GDTR*>(Gdtr));
+}
+
+
+
+
+
 
 // 写入 CR2
 void __stdcall AsmWriteCR2(_In_ ULONG_PTR Cr2Value);

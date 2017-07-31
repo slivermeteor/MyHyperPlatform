@@ -693,8 +693,8 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsBase, 0);
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestSsBase, 0);
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestDsBase, 0);
-	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsBase, UtilReadMsr(Msr::kIa32FsBase));
-	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsBase, UtilReadMsr(Msr::kIa32GsBase));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestFsBase, UtilReadMsr(MSR::kIa32FsBase));
+	Error |= UtilVmWrite(VMCS_FIELD::kGuestGsBase, UtilReadMsr(MSR::kIa32GsBase));
 #else
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestEsBase, VmGetSegmentBase(Gdtr.Base, AsmReadES()));
 	Error |= UtilVmWrite(VMCS_FIELD::kGuestCsBase, VmGetSegmentBase(Gdtr.Base, AsmReadCS()));
@@ -719,8 +719,8 @@ _Use_decl_annotations_ static bool VmSetupVmcs(const PROCESSOR_DATA* ProcessorDa
 	Error |= UtilVmWrite(VMCS_FIELD::kHostCr3, __readcr3());
 	Error |= UtilVmWrite(VMCS_FIELD::kHostCr4, __readcr4());
 #if defined(_AMD64_)
-	Error |= UtilVmWrite(VMCS_FIELD::kHostFsBase, UtilReadMsr(Msr::kIa32FsBase));
-	Error |= UtilVmWrite(VMCS_FIELD::kHostGsBase, UtilReadMsr(Msr::kIa32GsBase));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostFsBase, UtilReadMsr(MSR::kIa32FsBase));
+	Error |= UtilVmWrite(VMCS_FIELD::kHostGsBase, UtilReadMsr(MSR::kIa32GsBase));
 #else
 	Error |= UtilVmWrite(VMCS_FIELD::kHostFsBase, VmGetSegmentBase(Gdtr.Base, AsmReadFS()));
 	Error |= UtilVmWrite(VMCS_FIELD::kHostGsBase, VmGetSegmentBase(Gdtr.Base, AsmReadGS()));
