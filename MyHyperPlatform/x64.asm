@@ -57,7 +57,7 @@ ASM_DUMP_REGISTERS MACRO
     mov rdx, rsp
     add rdx, 8 * 17 ; rdx = StackPointer
 
-    sub rsp, 28h    ; ??? 
+    sub rsp, 28h    ; 
     call UtilDumpGpRegisters ; UtilDumpGpRegisters(GuestContext, StackPointr)
     add rsp, 28h
 

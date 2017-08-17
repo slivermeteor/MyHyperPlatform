@@ -266,6 +266,7 @@ _Use_decl_annotations_ static void* VmBuildMsrBitmap()
 	RtlZeroMemory(MsrBitmap, PAGE_SIZE);
 
 	// 当 _readmsr 读取所有MSR 时，都进行VM-exit
+	// 看到你可能会疑惑 1024 长度 如何控制 0x0 ~ 0x1FFF 区域 - 说明 1024 应该是 1:8 来进行管理的(对应的是大小?
 	const auto BitmapReadLow = reinterpret_cast<ULONG*>(MsrBitmap);
 	const auto BitmapReadHigh = BitmapReadLow + 1024;
 	RtlFillMemory(BitmapReadLow, 1024, 0xFF);		// 全部填充 1
@@ -290,7 +291,7 @@ _Use_decl_annotations_ static void* VmBuildMsrBitmap()
 		}
 	}
 
-	// 清空 IA32_GS_BASE (c0000101) IA32_KERNEL_GS_BASE (c0000102) 标志位
+	// 特别设置 IA32_GS_BASE (c0000101) IA32_KERNEL_GS_BASE (c0000102) 标志位
 	RTL_BITMAP BitmapReadHighHeader = { 0 };
 	RtlInitializeBitMap(&BitmapReadHighHeader, reinterpret_cast<PULONG>(BitmapReadHigh), 1024 * CHAR_BIT);
 	RtlClearBits(&BitmapReadHighHeader, 0x101, 2);
@@ -312,7 +313,7 @@ _Use_decl_annotations_ static UCHAR* VmBuildIoBitmaps()
 		return nullptr;
 
 	// 两块map 分别控制两段的访问
-	const auto IoBitmapA = IoBitmaps;					// 0x0    - 0x7fff
+	const auto IoBitmapA = IoBitmaps;					// 0x0    - 0x7fff - 同样是 1:8 的控制
 	const auto IoBitmapB = IoBitmaps + PAGE_SIZE;	    // 0x8000 - 0xffff
 	RtlZeroMemory(IoBitmapA, PAGE_SIZE);
 	RtlZeroMemory(IoBitmapB, PAGE_SIZE);
@@ -336,7 +337,7 @@ _Use_decl_annotations_ static NTSTATUS VmStartVm(void* Context)
 	PAGED_CODE();
 
 	MYHYPERPLATFORM_LOG_INFO("Initializing VMX for the processor %d.", KeGetCurrentProcessorNumberEx(nullptr));
-	const auto Ret = AsmInitializeVm(VmInitializeVm, Context);
+	const auto Ret = AsmInitializeVm(VmInitializeVm, Context);		// 汇编调用了，为了保存寄存器
 	NT_ASSERT(VmIsHyperPlatformInstalled() == Ret);
 
 	if (!Ret)
@@ -396,7 +397,7 @@ _Use_decl_annotations_ static void VmInitializeVm(ULONG_PTR GuestStackPointer, U
 	// |                  |    v
 	// | (VMM Stack)      |    v (grow)
 	// |                  |    v
-	// +------------------+  <- vmm_stack_limit            (eg, AED34000)
+	// +------------------+  <- VmmStackLimit            (eg, AED34000)
 	// (Low)
 	const auto VmmStackRegionBase = reinterpret_cast<ULONG_PTR>(ProcessorData->VmmStackLimit) + KERNEL_STACK_SIZE;
 	const auto VmmStackData = VmmStackRegionBase - sizeof(void*);
@@ -768,7 +769,7 @@ _Use_decl_annotations_ static ULONG VmGetSegmentAccessRight(USHORT _SegmentSelec
 	if (_SegmentSelector)
 	{
 		auto NativeAccessRight = AsmLoadAccessRightsByte(SegmentSelector.all);
-		NativeAccessRight >>= 8;	// ???
+		NativeAccessRight >>= 8;	// 去掉前8字节基地址， 得到 IDT.Type 
 		AccessRight.all = static_cast<ULONG>(NativeAccessRight);
 		AccessRight.fields.Reserved1 = 0;
 		AccessRight.fields.Reserved2 = 0;
@@ -850,7 +851,7 @@ _Use_decl_annotations_ static void VmLaunchVm()
 
 	auto VmxStatus = static_cast<VMX_STATUS>(__vmx_vmlaunch());
 
-	// 如果 __vmx_vmlunch成功执行, eip 应该转向 GuestEip
+	// 如果 __vmx_vmlunch成功执行, eip|rip 应该转向 GuestEip
 	if (VmxStatus == VMX_STATUS::kErrorWithStatus)
 	{
 		ErrorCode = UtilVmRead(VMCS_FIELD::kVmInstructionError);

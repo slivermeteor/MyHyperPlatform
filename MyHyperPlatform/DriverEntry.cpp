@@ -65,7 +65,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 	// 初始化行为记录函数 
 	NtStatus = PerfInitialization();
-	if (!NT_SUCCESS(NtStatus)) {
+	if (!NT_SUCCESS(NtStatus)) 
+	{
 		GlobalVariablesTermination();
 		LogTermination();
 		return NtStatus;
@@ -73,7 +74,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 	// 初始化工具函数
 	NtStatus = UtilInitialization(DriverObject);
-	if (!NT_SUCCESS(NtStatus)) {
+	if (!NT_SUCCESS(NtStatus)) 
+	{
 		PerfTermination();
 		GlobalVariablesTermination();
 		LogTermination();
@@ -82,7 +84,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 	// 初始化电源回调函数
 	NtStatus = PowerCallbackInitialization();
-	if (!NT_SUCCESS(NtStatus)) {
+	if (!NT_SUCCESS(NtStatus)) 
+	{
 		UtilTermination();
 		PerfTermination();
 		GlobalVariablesTermination();
@@ -92,7 +95,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 	// 初始化热插拔函数
 	NtStatus = HotplugCallbackInitialization();
-	if (!NT_SUCCESS(NtStatus)) {
+	if (!NT_SUCCESS(NtStatus)) 
+	{
 		PowerCallbackTermination();
 		UtilTermination();
 		PerfTermination();
@@ -103,7 +107,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegisterPath)
 
 	// 虚拟化所有处理器
 	NtStatus = VmInitialization();
-	if (!NT_SUCCESS(NtStatus)) {
+	if (!NT_SUCCESS(NtStatus)) 
+	{
 		HotplugCallbackTermination();
 		PowerCallbackTermination();
 		UtilTermination();

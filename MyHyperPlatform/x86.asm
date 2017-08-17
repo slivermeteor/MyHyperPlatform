@@ -38,7 +38,7 @@ ENDM
 ; 虚拟化初始化函数
 ; bool __stdcall AsmInitializeVm(_In_ void (*vm_initialization_routine)(_In_ ULONG_PTR, _In_ ULONG_PTR,  _In_opt_ void *), _In_opt_ void *context);
 AsmInitializeVm PROC VmInitializationRoutine, Context
-
+	; 没局部变量 不用开栈区 - x64 区别
 	pushfd
 	pushad
 
@@ -229,7 +229,8 @@ AsmVmmEntryPoint PROC
 	mov edx, ecx	; 保存原本CR0 
 	and cl, 0f1h	; 清空 MP, EM TS bit (浮点寄存器访问权限)
 	mov cr0, ecx
-	; 保存浮点寄存器 ???
+
+	; 保存浮点寄存器 
 	movaps xmmword ptr [esp +  0h], xmm0
     movaps xmmword ptr [esp + 10h], xmm1
     movaps xmmword ptr [esp + 20h], xmm2

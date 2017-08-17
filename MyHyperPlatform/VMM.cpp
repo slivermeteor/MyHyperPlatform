@@ -108,7 +108,7 @@ _Use_decl_annotations_ bool __stdcall VmmVmExitHandler(VMM_INITIAL_STACK *Stack)
 	// 保存 guest 背景文 
 	const auto GuestIrql = KeGetCurrentIrql();
 	const auto GuestCr8 = IsX64() ? __readcr8() : 0;
-	// 提升 IRQL - ??? 为啥提升
+	// 提升 IRQL CR8 是记录当前执行权限的寄存器
 	if (GuestIrql < DISPATCH_LEVEL)
 		KeRaiseIrqlToDpcLevel();
 
@@ -129,7 +129,7 @@ _Use_decl_annotations_ bool __stdcall VmmVmExitHandler(VMM_INITIAL_STACK *Stack)
 	if (GuestContext.Irql < DISPATCH_LEVEL)
 		KeLowerIrql(GuestContext.Irql);
 
-	// 更新 CR8 ???
+	// 更新 CR8 
 	if (IsX64())
 	{
 		__writecr8(GuestContext.Cr8);
@@ -153,7 +153,7 @@ _Use_decl_annotations_ static void VmmHandleVmExit(GUEST_CONTEXT* GuestContext)
 {
 	MYHYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
 
-	//MYHYPERPLATFORM_COMMON_DBG_BREAK();
+	MYHYPERPLATFORM_COMMON_DBG_BREAK();
 
 	const VM_EXIT_INFORMATION ExitReason = { static_cast<ULONG32>(UtilVmRead(VMCS_FIELD::kVmExitReason)) };
 
@@ -276,7 +276,7 @@ _Use_decl_annotations_ static void VmmHandleException(GUEST_CONTEXT* GuestContex
 
 			VmmInjectInterruption(InterruptionType, Vector, true, FaultCode.all);
 			MYHYPERPLATFORM_LOG_INFO_SAFE("GuestIp= %016Ix, #PF Fault= %016Ix Code= 0x%2x", GuestContext->Ip, FaultAddress, FaultCode.all);
-			// ???
+			// 页错误线性地址保存寄存器
 			AsmWriteCR2(FaultAddress);
 		}
 		else if (Vector == INTERRUPTION_VECTOR::kGeneralProtectionException)
@@ -1112,7 +1112,7 @@ _Use_decl_annotations_ static void VmmHandleEptViolation(GUEST_CONTEXT* GuestCon
 	EptHandleEptViolation(ProcessorData->EptData);
 }
 
-// EXIT_REASON_EPT_MISCONFIG ??? 
+// EXIT_REASON_EPT_MISCONFIG 在启动 EPT 机制下，引发了 EPT misconfiguration
 _Use_decl_annotations_ static void VmmHandleEptMisconfig(GUEST_CONTEXT* GuestContext)
 {
 	const auto FaultAddress = UtilVmRead(VMCS_FIELD::kGuestPhysicalAddress);

@@ -172,7 +172,7 @@ _Use_decl_annotations_ static NTSTATUS LogInitializeBufferInfo(const wchar_t* Lo
 	}
 
 	// 初始化两块Buffer
-	// 两块 Buffer， 一块用来写入(LogFlushLogBuffer), 一块用来输出(LogBufferMessage)。
+	// 两块 Buffer， 一块用来写入(LogFlushLogBuffer), 一块用来输出(LogBufferMessage)。两块轮转交换任务
 	RtlFillMemory(LogBufferInfo->LogBufferOne, LogBufferSize, 0xFF);
 	LogBufferInfo->LogBufferOne[0] = '\0';
 	LogBufferInfo->LogBufferOne[LogBufferSize - 1] = '\0';

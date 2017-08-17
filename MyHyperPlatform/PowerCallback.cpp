@@ -81,6 +81,7 @@ _Use_decl_annotations_ static void PowerCallbackRoutine(PVOID CallbackContext, P
 
 	MYHYPERPLATFORM_COMMON_DBG_BREAK();
 
+	// 是开机还是关机 - 执行初始化还是结束
 	if (Argument2)
 	{
 		MYHYPERPLATFORM_LOG_INFO("Resume the system.");

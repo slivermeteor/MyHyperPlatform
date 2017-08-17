@@ -31,9 +31,9 @@ static const auto kEptPtiShift = 12ull;
 // 预申请的 EPT entry。当实际数字超过预设值，VMM触发bug
 static const auto EptNumberOfPreallocatedEntries = 50;
 // 
-static const auto EptNumberOfMaxVariableRangeMtrrs = 255;
+static const auto EptNumberOfMaxVariableRangeMtrrs = 255; // MTRR 规定作为 96 个内存范围 - 这个 255 自己规定的 
 
-static const auto EptNumberOfFixedRangeMtrrs = 1 + 2 + 8;
+static const auto EptNumberOfFixedRangeMtrrs = 1 + 2 + 8; // 64K - 1 16K - 2 8K - 8
 
 static const auto EptMtrrEntriesSize = EptNumberOfFixedRangeMtrrs + EptNumberOfMaxVariableRangeMtrrs;
 
@@ -132,6 +132,8 @@ _Use_decl_annotations_ ULONG64 EptGetEptPointer(EPT_DATA* EptData)
 }
 
 // 读取所有的MTRR  -并构造对应的 MTRR_DATA
+// 相关阅读 http://blog.csdn.net/lightseed/article/details/4603383 
+// intel 手册 Volume 3 11.11
 _Use_decl_annotations_ void EptInitializeMtrrEntries()
 {
 	PAGED_CODE();
@@ -143,18 +145,20 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 	IA32_MTRR_DEFAULT_TYPE_MSR Ia32MtrrDefaultTypeMsr = { UtilReadMsr64(MSR::kIa32MtrrDefType) };
 	g_EptMtrrDefaultType = Ia32MtrrDefaultTypeMsr.fields.DefaultMemoryType;
 
-	// 读取 MTRR 能力
+	// 读取 MTRR Capability 寄存器
 	IA32_MTRR_CAPABILITIES_MSR Ia32MtrrCapabilitiesMsr = { UtilReadMsr64(MSR::kIa32MtrrCap) };
 	MYHYPERPLATFORM_LOG_DEBUG(
 		"MTRR Default=%lld, VariableCount=%lld, FixedSupported=%lld, FixedEnabled=%lld",
 		Ia32MtrrDefaultTypeMsr.fields.DefaultMemoryType,
-		Ia32MtrrCapabilitiesMsr.fields.variable_range_count,
-		Ia32MtrrCapabilitiesMsr.fields.fixed_range_supported,
+		Ia32MtrrCapabilitiesMsr.fields.VariableRangeCount,
+		Ia32MtrrCapabilitiesMsr.fields.FixedRangeSupported,
 		Ia32MtrrDefaultTypeMsr.fields.FixedMtrrsEnabled);
 
 	// 读取 FIXED MTRR - 构造对应的 MTRR_ENTRIES
-	if (Ia32MtrrCapabilitiesMsr.fields.fixed_range_supported && Ia32MtrrDefaultTypeMsr.fields.FixedMtrrsEnabled)
+	//								是否支持 Fixed Range？							        是否启用 Fixed Range?
+	if (Ia32MtrrCapabilitiesMsr.fields.FixedRangeSupported && Ia32MtrrDefaultTypeMsr.fields.FixedMtrrsEnabled)
 	{
+		// Fixed 管理基地址和每个范围的长度都是固定的。
 		static const auto k64kBase = 0x0;
 		static const auto k64kManagedSize = 0x10000;
 		static const auto k16kBase = 0x80000;
@@ -186,7 +190,7 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 		offset = 0;
 		for (auto FixedMsr = static_cast<ULONG>(MSR::kIa32MtrrFix16k80000); FixedMsr <= static_cast<ULONG>(MSR::kIa32MtrrFix16kA0000); FixedMsr++)
 		{
-			// 读取对应的FIXED_MSR
+			// 读取对应的 FIXED_MSR
 			FixedRange.all = UtilReadMsr64(static_cast<MSR>(FixedMsr));
 
 			for (auto MemoryType : FixedRange.fields.types)
@@ -200,7 +204,7 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 				MtrrEntries[Index].FixedMtrr = true;
 				MtrrEntries[Index].Type = MemoryType;
 				MtrrEntries[Index].RangeBase = Base;
-				MtrrEntries[Index].RangeEnd = Base + k16kManagedSize - 1;
+				MtrrEntries[Index].RangeEnd = Base + k16kManagedSize - 1;	// 注意这个 - 1
 				Index++;
 			}
 		}
@@ -229,7 +233,7 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 
 	// 读取所有 Variable-Range 构造 MTRR_ENTRY
 	// Variable-Range寄存器是一队 第一个指示 PHYSICAL_BASE 第二个指示 PHYSICAL_MASK 
-	for (auto i = 0; i < Ia32MtrrCapabilitiesMsr.fields.variable_range_count; i++)
+	for (auto i = 0; i < Ia32MtrrCapabilitiesMsr.fields.VariableRangeCount; i++)
 	{
 		// 读取对应的 MTRR mask并且检查是否在使用中
 		const auto PhysicalMask = static_cast<ULONG>(MSR::kIa32MtrrPhysMaskN) + i * 2; // Mask每队中的第二个寄存器 
@@ -237,14 +241,17 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 		if (!Ia32MtrrPhysicalMaskMsr.fields.valid)
 			continue;
 
-		// 得到 MTRR 消息的长度
+		// 得到 Variable-Range 的长度 - 根据
 		ULONG Length = 0;
-		BitScanForward64(&Length, Ia32MtrrPhysicalMaskMsr.fields.phys_mask * PAGE_SIZE);
+		BitScanForward64(&Length, Ia32MtrrPhysicalMaskMsr.fields.phys_mask * PAGE_SIZE); // * PAGE_SIZE 相当于 << 3 
+		
 
 		const auto PhysicalBase = static_cast<ULONG>(MSR::kIa32MtrrPhysBaseN) + i * 2;
 		IA32_MTRR_PHYSICAL_BASE_MSR Ia32MtrrPhysicalBaseMsr = { UtilReadMsr64(static_cast<MSR>(PhysicalBase)) };
 		ULONG64 Base = Ia32MtrrPhysicalBaseMsr.fields.phys_base * PAGE_SIZE;
-		ULONG64 End = Base + (1ull << Length) - 1;
+		ULONG64 End = Base + (1ull << Length) - 1;		// AddressWithin & Mask = Base & Mask -> 这个例子告诉我们 Mask 应该是将低位可能变化的位
+												        // 都变成了0, 并且范围肯定是 4K 对齐的。那么我们只要得到有多少位是变化的，再加上 base 就是 end 
+														// 其实就是 * 2 ... 
 
 		MtrrEntries[Index].Enabled = true;
 		MtrrEntries[Index].FixedMtrr = false;
@@ -613,7 +620,7 @@ _Use_decl_annotations_ static void EptFreeUnusedPreAllocatedEntries(EPT_COMMON_E
 	ExFreePoolWithTag(PreallocatedEntries, HyperPlatformCommonPoolTag);
 }
 
-// 释放所有申请的内存
+// 释放所有申请的内存 
 _Use_decl_annotations_ void EptTermination(EPT_DATA* EptData)
 {
 	MYHYPERPLATFORM_LOG_DEBUG("Used pre-allocated = %2d / %2d", EptData->PreallocatedEntriesCount, EptNumberOfPreallocatedEntries);

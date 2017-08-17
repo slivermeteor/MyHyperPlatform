@@ -572,11 +572,11 @@ static_assert(sizeof(IA32_VMX_EPT_VPID_CAP) == 8, "Size check");
 union IA32_MTRR_CAPABILITIES_MSR {
 	ULONG64 all;
 	struct {
-		ULONG64 variable_range_count : 8;   //<! [0:7] VCNT 表示8个变量 指示8个MTRRs的范围。
-		ULONG64 fixed_range_supported : 1;  //<! [8]   当被置1，固定MTRRs的范围
-		ULONG64 reserved : 1;               //<! [9]   
-		ULONG64 write_combining : 1;        //<! [10]  是否支持WC类型
-		ULONG64 smrr : 1;                   //<! [11]
+		ULONG64 VariableRangeCount : 8;   //<! [0:7] VCNT 表示8个变量 指示8个MTRRs的范围。
+		ULONG64 FixedRangeSupported : 1;  //<! [8]   当被置1，固定MTRRs的范围
+		ULONG64 Reserved : 1;               //<! [9]   
+		ULONG64 WriteCombining : 1;        //<! [10]  是否支持WC类型
+		ULONG64 Smrr : 1;                   //<! [11]
 	} fields;
 };
 static_assert(sizeof(IA32_MTRR_CAPABILITIES_MSR) == 8, "Size check");

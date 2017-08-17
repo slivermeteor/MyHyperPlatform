@@ -291,7 +291,7 @@ _Use_decl_annotations_ static PVOID NTAPI UtilUnsafePcToFileHeader(PVOID PcValue
 _Use_decl_annotations_ static NTSTATUS UtilInitializePhysicalMemoryRanges()
 {
 	PAGED_CODE();
-	// 得到页面范围
+	// 得到页面范围 - Ranges 包含全部物理页的信息
 	const auto Ranges = UtilBuildPhysicalMemoryRanges();
 	if (!Ranges)
 		return STATUS_UNSUCCESSFUL;
@@ -300,7 +300,7 @@ _Use_decl_annotations_ static NTSTATUS UtilInitializePhysicalMemoryRanges()
 	// 遍历页面 输出信息
 	for (auto i = 0ul; i < Ranges->NumberOfRuns; ++i)
 	{
-		// 物理页面范围
+		// 物理页面范围 - 输出
 		const auto BaseAddr = static_cast<ULONG64>(Ranges->Run[i].BasePage) * PAGE_SIZE;
 		MYHYPERPLATFORM_LOG_DEBUG("Physical Memory Ranges: %016llx - %016llx", BaseAddr, BaseAddr + Ranges->Run[i].PageCount * PAGE_SIZE);	
 	}
@@ -316,7 +316,7 @@ _Use_decl_annotations_ static PHYSICAL_MEMORY_DESCRIPTOR* UtilBuildPhysicalMemor
 {
 	PAGED_CODE();
 
-	const auto PhysicalMemoryRanges = MmGetPhysicalMemoryRanges();
+	const auto PhysicalMemoryRanges = MmGetPhysicalMemoryRanges();	// 系统保留函数 但是根据下面使用，可以得到它返回一个数组 包含全部物理页的结构
 	if (!PhysicalMemoryRanges)
 		return nullptr;
 
@@ -355,8 +355,8 @@ _Use_decl_annotations_ static PHYSICAL_MEMORY_DESCRIPTOR* UtilBuildPhysicalMemor
 		auto CurrentRun = &PhyiscalMemoryBlock->Run[RunIndex];
 		auto CurrentBlock = &PhysicalMemoryRanges[RunIndex];
 
-		CurrentRun->BasePage = static_cast<ULONG_PTR>(UtilPfnFromPa(CurrentBlock->BaseAddress.QuadPart));
-		CurrentRun->PageCount = static_cast<ULONG_PTR>(BYTES_TO_PAGES(CurrentBlock->NumberOfBytes.QuadPart));
+		CurrentRun->BasePage = static_cast<ULONG_PTR>(UtilPfnFromPa(CurrentBlock->BaseAddress.QuadPart));		// 这一段第一页的 Page Count 
+		CurrentRun->PageCount = static_cast<ULONG_PTR>(BYTES_TO_PAGES(CurrentBlock->NumberOfBytes.QuadPart));	// 计算给定大小需要多少页存储，也就是得到这一段，一共有多少页。
 	}
 
 	ExFreePoolWithTag(PhysicalMemoryRanges, 'hPmM');

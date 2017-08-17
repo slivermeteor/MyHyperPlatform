@@ -2,7 +2,7 @@
 
 #include <fltKernel.h>
 
-/// Represents VMM related data shared across all processors
+// 包含了 VMM 中所有处理器共熊的数据结构
 struct SHARED_PROCESSOR_DATA 
 {
 	volatile long ReferenceCount;  //!< Number of processors sharing this data
