@@ -131,7 +131,7 @@ _Use_decl_annotations_ ULONG64 EptGetEptPointer(EPT_DATA* EptData)
 	return EptData->EptPointer->all;
 }
 
-// 读取所有的MTRR  -并构造对应的 MTRR_DATA
+// 读取所有的MTRR - 并构造对应的 MTRR_DATA
 // 相关阅读 http://blog.csdn.net/lightseed/article/details/4603383 
 // intel 手册 Volume 3 11.11
 _Use_decl_annotations_ void EptInitializeMtrrEntries()
@@ -166,13 +166,11 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 		static const auto k4kBase = 0xC0000;
 		static const auto k4kManagedSize = 0x1000;
 
-		// FIXED_64K
+		// FIXED_64K 对齐长度 0x10000
 		ULONG64 offset = 0;
 		IA32_MTRR_FIXED_RANGE_MSR FixedRange = { UtilReadMsr64(MSR::kIa32MtrrFix64k00000) };
 		for (auto MemoryType : FixedRange.fields.types)
 		{
-			// 每一个Entry 对应 64K(0x10000) 长度
-			
 			ULONG64 Base = k64kBase + offset;
 			offset += k64kManagedSize;
 
@@ -186,13 +184,13 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 		}
 		NT_ASSERT(k64kBase + offset == k16kBase);
 
-		// FIXED_16K
+		// FIXED_16K 对齐长度 0x4000
 		offset = 0;
 		for (auto FixedMsr = static_cast<ULONG>(MSR::kIa32MtrrFix16k80000); FixedMsr <= static_cast<ULONG>(MSR::kIa32MtrrFix16kA0000); FixedMsr++)
 		{
 			// 读取对应的 FIXED_MSR
 			FixedRange.all = UtilReadMsr64(static_cast<MSR>(FixedMsr));
-
+			// 每个 16k 长度
 			for (auto MemoryType : FixedRange.fields.types)
 			{
 				//  16K 对齐
@@ -210,11 +208,12 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 		}
 		NT_ASSERT(k16kBase + offset == k4kBase);
 
-		// FIX_4K
+		// FIX_4K - 对齐长度 0x1000
 		offset = 0;
 		for (auto FixedMsr = static_cast<ULONG>(MSR::kIa32MtrrFix4kC0000); FixedMsr <= static_cast<ULONG>(MSR::kIa32MtrrFix4kF8000); FixedMsr++)
 		{
 			FixedRange.all = UtilReadMsr64(static_cast<MSR>(FixedMsr));
+			
 			for (auto MemoryType : FixedRange.fields.types)
 			{
 				ULONG64 Base = k4kBase + offset;
@@ -232,18 +231,18 @@ _Use_decl_annotations_ void EptInitializeMtrrEntries()
 	}
 
 	// 读取所有 Variable-Range 构造 MTRR_ENTRY
-	// Variable-Range寄存器是一队 第一个指示 PHYSICAL_BASE 第二个指示 PHYSICAL_MASK 
+	// Variable-Range寄存器是一队(两两绑定) 第一个指示 PHYSICAL_BASE 第二个指示 PHYSICAL_MASK 
 	for (auto i = 0; i < Ia32MtrrCapabilitiesMsr.fields.VariableRangeCount; i++)
 	{
 		// 读取对应的 MTRR mask并且检查是否在使用中
-		const auto PhysicalMask = static_cast<ULONG>(MSR::kIa32MtrrPhysMaskN) + i * 2; // Mask每队中的第二个寄存器 
+		const auto PhysicalMask = static_cast<ULONG>(MSR::kIa32MtrrPhysMaskN) + i * 2; // Mask - 每队中的第二个寄存器 
 		IA32_MTRR_PHYSICAL_MASK_MSR Ia32MtrrPhysicalMaskMsr = { UtilReadMsr64(static_cast<MSR>(PhysicalMask)) };
 		if (!Ia32MtrrPhysicalMaskMsr.fields.valid)
 			continue;
 
-		// 得到 Variable-Range 的长度 - 根据
+		// 得到 Variable-Range 的长度 
 		ULONG Length = 0;
-		BitScanForward64(&Length, Ia32MtrrPhysicalMaskMsr.fields.phys_mask * PAGE_SIZE); // * PAGE_SIZE 相当于 << 3 
+		BitScanForward64(&Length, Ia32MtrrPhysicalMaskMsr.fields.phys_mask * PAGE_SIZE); // * PAGE_SIZE 相当于 << 3(左移三位)
 		
 
 		const auto PhysicalBase = static_cast<ULONG>(MSR::kIa32MtrrPhysBaseN) + i * 2;
